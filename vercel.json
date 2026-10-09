@@ -5,7 +5,6 @@
   "installCommand": "echo root-install",
   "outputDirectory": "frontend/.next",
   "devCommand": "cd frontend && npm run dev",
-  "region": "iad1",
   "regions": ["iad1"],
   "functions": {
     "frontend/app/api/**/*.ts": {
