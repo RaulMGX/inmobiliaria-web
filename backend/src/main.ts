@@ -42,7 +42,8 @@ async function bootstrap() {
       if (!isNodeEnvDev) {
         if (allowedOrigins.includes(origin)) return callback(null, true);
         if (prodOriginRegex.some((r) => r.test(origin))) return callback(null, true);
-        return callback(new Error('Origen CORS no permitido: ' + origin));
+        Logger.warn(`CORS bloqueado (no fallo 500, solo CORS): ${origin}`, 'CORS');
+        return callback(null, false);
       }
       callback(null, true);
     },
