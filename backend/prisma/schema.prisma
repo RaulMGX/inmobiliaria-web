@@ -1,0 +1,842 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/infrastructure/database/prisma/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TipoProyecto {
+  CASAS
+  DEPARTAMENTOS
+}
+
+enum EstadoProyecto {
+  ACTIVO
+  FINALIZADO
+  PAUSADO
+}
+
+enum TipoPropiedad {
+  CASA
+  DEPARTAMENTO
+  TERRENO
+  LOCAL
+  OFICINA
+  OTRO
+}
+
+enum EstadoPropiedad {
+  DISPONIBLE
+  RESERVADO
+  VENDIDO
+  SEPARADO
+}
+
+enum TipoDocumentoCliente {
+  DNI
+  CE
+  PASAPORTE
+  RUC
+  OTRO
+}
+
+enum EstadoCivilCliente {
+  SOLTERO
+  CASADO
+  CONVIVIENTE
+  DIVORCIADO
+  VIUDO
+  OTRO
+}
+
+enum MonedaCliente {
+  PEN
+  USD
+}
+
+enum MedioCaptacionCliente {
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+  WHATSAPP
+  REFERIDO
+  WEB
+  LLAMADA
+  OTRO
+}
+
+enum EstadoCliente {
+  NUEVO
+  CONTACTADO
+  INTERESADO
+  EN_SEGUIMIENTO
+  CALIFICADO
+  NO_INTERESADO
+  CLIENTE
+}
+
+enum MotivoCompraCliente {
+  VIVIENDA_FAMILIAR
+  INVERSION_RENTA
+  INVERSION_REVENTA
+  SEGUNDA_VIVIENDA
+  VIVIENDA_VACACIONAL
+  HERENCIA
+  TRASLADO_CIUDAD
+  OTRO
+}
+
+enum MetodoPagoPreferidoCliente {
+  CONTADO
+  CREDITO_HIPOTECARIO
+  FINANCIAMIENTO_DIRECTO
+  PRESTAMO_PERSONAL
+  MIXTO
+  OTRO
+}
+
+enum UrgenciaCompraCliente {
+  URGENTE_1_MES
+  CORTO_PLAZO_3_MESES
+  MEDIO_PLAZO_6_12_MESES
+  LARGO_PLAZO_MAS_12
+  SIN_PRISA
+}
+
+enum EtapaPipelineComercial {
+  NUEVO
+  CONTACTADO
+  INTERESADO
+  VISITA_PROGRAMADA
+  NEGOCIACION
+  SEPARACION
+  VENTA_GANADA
+  VENTA_PERDIDA
+}
+
+enum PrioridadPipelineComercial {
+  BAJA
+  MEDIA
+  ALTA
+}
+
+enum EstadoSeguimiento {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADA
+  CANCELADA
+}
+
+enum TipoSeguimiento {
+  LLAMADA
+  WHATSAPP
+  CORREO
+  REUNION
+  VISITA
+  OTRO
+}
+
+enum PrioridadSeguimiento {
+  BAJA
+  MEDIA
+  ALTA
+}
+
+enum EstadoVisitaPropiedad {
+  PROGRAMADA
+  CONFIRMADA
+  REPROGRAMADA
+  REALIZADA
+  CANCELADA
+  NO_ASISTIO
+}
+
+enum EstadoReserva {
+  ACTIVA
+  VENCIDA
+  CANCELADA
+  CONVERTIDA
+}
+
+enum EstadoVenta {
+  PENDIENTE_FORMALIZACION
+  FORMALIZADA
+  PAGADA
+  ANULADA
+}
+
+enum MetodoPagoVenta {
+  CONTADO
+  CREDITO_HIPOTECARIO
+  FINANCIAMIENTO_DIRECTO
+  MIXTO
+  OTRO
+}
+
+enum EstadoPago {
+  PENDIENTE
+  VENCIDO
+  PAGADO
+  ANULADO
+}
+
+enum MetodoPagoPago {
+  EFECTIVO
+  TRANSFERENCIA_BANCARIA
+  DEPOSITO
+  TARJETA
+  CHEQUE
+  YAPE
+  PLIN
+  OTRO
+}
+
+enum TipoDocumentoDocumento {
+  IDENTIDAD
+  COMPROBANTE
+  CONTRATO
+  IMAGEN
+  OTRO
+}
+
+enum EstadoContrato {
+  BORRADOR
+  PENDIENTE_FIRMA
+  FIRMADO
+  VENCIDO
+  ANULADO
+}
+
+enum TipoContrato {
+  COMPRAVENTA
+  SEPARACION
+  ADENDA
+  OTRO
+}
+
+enum EstadoComision {
+  PENDIENTE
+  APROBADA
+  PAGADA
+  ANULADA
+}
+
+model Empresa {
+  id              String    @id @default(cuid())
+  nombre          String    @db.VarChar(150)
+  ruc             String    @unique @db.VarChar(20)
+  telefono        String?   @db.VarChar(30)
+  correo          String?   @db.VarChar(120)
+  direccion       String?   @db.VarChar(255)
+  logo            String?   @db.VarChar(255)
+  colorPrimario   String?   @db.VarChar(20) @map("color_primario")
+  colorSecundario String?   @db.VarChar(20) @map("color_secundario")
+  active          Boolean   @default(true)
+  deletedAt       DateTime? @map("deleted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  clientes        Cliente[]
+  pipelines       PipelineComercial[]
+  roles           Rol[]
+  seguimientos    SeguimientoAgenda[]
+  proyectos       Proyecto[]
+  reservas        Reserva[]
+  ventas          Venta[]
+  pagos           Pago[]
+  documentos      Documento[]
+  contratos       Contrato[]
+  comisiones      Comision[]
+  notificaciones  Notificacion[]
+  usuarios        Usuario[]
+  visitas         VisitaPropiedad[]
+
+  @@index([active])
+  @@index([deletedAt])
+  @@map("empresas")
+}
+
+model Rol {
+  id          String    @id @default(cuid())
+  nombre      String    @db.VarChar(80)
+  descripcion String?   @db.VarChar(255)
+  active      Boolean   @default(true)
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  empresaId   String    @map("empresa_id")
+  empresa     Empresa   @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  usuarios    Usuario[]
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@index([active])
+  @@index([deletedAt])
+  @@map("roles")
+}
+
+model Usuario {
+  id         String    @id @default(cuid())
+  nombres    String    @db.VarChar(100)
+  apellidos  String    @db.VarChar(100)
+  correo     String    @db.VarChar(120)
+  password   String    @db.VarChar(255)
+  telefono   String?   @db.VarChar(30)
+  avatar     String?   @db.VarChar(255)
+  active     Boolean   @default(true)
+  deletedAt  DateTime? @map("deleted_at")
+  lastLogin  DateTime? @map("last_login")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  empresaId  String    @map("empresa_id")
+  rolId      String    @map("rol_id")
+  refreshToken String? @map("refresh_token") @db.VarChar(500)
+  empresa    Empresa   @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  pipelines  PipelineComercial[]
+  rol        Rol       @relation(fields: [rolId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reservas   Reserva[]
+  seguimientos SeguimientoAgenda[]
+  ventas     Venta[]
+  visitas    VisitaPropiedad[]
+  pagosRegistrados Pago[]
+  documentosSubidos Documento[]
+  contratosGenerados Contrato[]
+  comisionesRecibidas Comision[]
+  notificacionesRecibidas Notificacion[]
+
+  @@unique([empresaId, correo])
+  @@index([empresaId])
+  @@index([rolId])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([lastLogin])
+  @@map("usuarios")
+}
+
+model Proyecto {
+  id           String         @id @default(cuid())
+  nombre       String         @db.VarChar(150)
+  descripcion  String?        @db.VarChar(500)
+  tipoProyecto TipoProyecto   @map("tipo_proyecto")
+  estado       EstadoProyecto @default(ACTIVO)
+  fechaInicio  DateTime?      @db.Date @map("fecha_inicio")
+  fechaFin     DateTime?      @db.Date @map("fecha_fin")
+  direccion    String?        @db.VarChar(255)
+  distrito     String?        @db.VarChar(100)
+  ciudad       String?        @db.VarChar(100)
+  active       Boolean        @default(true)
+  deletedAt    DateTime?      @map("deleted_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  empresaId    String         @map("empresa_id")
+  empresa      Empresa        @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  propiedades  Propiedad[]
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@index([estado])
+  @@index([active])
+  @@index([deletedAt])
+  @@map("proyectos")
+}
+
+model Propiedad {
+  id             String          @id @default(cuid())
+  codigoInterno  String          @unique @map("codigo_interno") @db.VarChar(50)
+  nombre         String          @db.VarChar(150)
+  tipoPropiedad  TipoPropiedad   @map("tipo_propiedad")
+  estado         EstadoPropiedad @default(DISPONIBLE)
+  precio         Decimal         @db.Decimal(14, 2)
+  areaTotal      Decimal?        @map("area_total") @db.Decimal(10, 2)
+  areaConstruida Decimal?        @map("area_construida") @db.Decimal(10, 2)
+  habitaciones   Int?
+  banos          Int?
+  estacionamientos Int?
+  piso           Int?
+  direccion      String?         @db.VarChar(255)
+  distrito       String?         @db.VarChar(100)
+  ciudad         String?         @db.VarChar(100)
+  latitud        Decimal?        @db.Decimal(10, 8)
+  longitud       Decimal?        @db.Decimal(11, 8)
+  descripcion    String?         @db.VarChar(1000)
+  active         Boolean         @default(true)
+  deletedAt      DateTime?       @map("deleted_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  proyectoId     String          @map("proyecto_id")
+  proyecto       Proyecto        @relation(fields: [proyectoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reservas       Reserva[]
+  ventas         Venta[]
+  visitas        VisitaPropiedad[]
+  documentos     Documento[]
+  contratos      Contrato[]
+
+  @@index([proyectoId])
+  @@index([estado])
+  @@index([active])
+  @@index([deletedAt])
+  @@map("propiedades")
+}
+
+model Cliente {
+  id                  String                 @id @default(cuid())
+  nombres             String                 @db.VarChar(100)
+  apellidos           String                 @db.VarChar(100)
+  tipoDocumento       TipoDocumentoCliente?  @map("tipo_documento")
+  numeroDocumento     String?                @map("numero_documento") @db.VarChar(30)
+  celular             String                 @db.VarChar(30)
+  telefono            String?                @db.VarChar(30)
+  correo              String?                @db.VarChar(120)
+  fechaNacimiento     DateTime?              @db.Date @map("fecha_nacimiento")
+  estadoCivil         EstadoCivilCliente?    @map("estado_civil")
+  ocupacion           String?                @db.VarChar(100)
+  empresaDondeTrabaja String?                @map("empresa_donde_trabaja") @db.VarChar(150)
+  distrito            String?                @db.VarChar(100)
+  ciudad              String?                @db.VarChar(100)
+  direccion           String?                @db.VarChar(255)
+  presupuestoMinimo   Decimal?               @map("presupuesto_minimo") @db.Decimal(14, 2)
+  presupuestoMaximo   Decimal?               @map("presupuesto_maximo") @db.Decimal(14, 2)
+  moneda              MonedaCliente?
+  medioCaptacion      MedioCaptacionCliente  @map("medio_captacion")
+  /// Perfil de compra (nuevos campos)
+  tipoPropiedadInteres     TipoPropiedad?           @map("tipo_propiedad_interes")
+  propiedadInteresDetalle  String?                  @map("propiedad_interes_detalle") @db.VarChar(255)
+  motivoCompra             MotivoCompraCliente?     @map("motivo_compra")
+  metodoPagoPreferido      MetodoPagoPreferidoCliente? @map("metodo_pago_preferido")
+  bancoPreferencia         String?                  @map("banco_preferencia") @db.VarChar(150)
+  preAprobacionDetalle     String?                  @map("pre_aprobacion_detalle") @db.VarChar(255)
+  urgenciaCompra           UrgenciaCompraCliente?   @map("urgencia_compra")
+  estado              EstadoCliente          @default(NUEVO)
+  observaciones       String?                @db.Text
+  active              Boolean                @default(true)
+  deletedAt           DateTime?              @map("deleted_at")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  empresaId           String                 @map("empresa_id")
+  empresa             Empresa                @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  pipelines           PipelineComercial[]
+  reservas            Reserva[]
+  seguimientos        SeguimientoAgenda[]
+  ventas              Venta[]
+  visitas             VisitaPropiedad[]
+  documentos          Documento[]
+  contratos           Contrato[]
+
+  @@unique([empresaId, tipoDocumento, numeroDocumento])
+  @@index([empresaId])
+  @@index([estado])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, createdAt])
+  @@map("clientes")
+}
+
+model PipelineComercial {
+  id                       String                     @id @default(cuid())
+  etapa                    EtapaPipelineComercial     @default(NUEVO)
+  fechaIngreso             DateTime                   @default(now()) @map("fecha_ingreso")
+  fechaUltimoSeguimiento   DateTime?                  @map("fecha_ultimo_seguimiento")
+  proximaFechaSeguimiento  DateTime?                  @map("proxima_fecha_seguimiento")
+  prioridad                PrioridadPipelineComercial @default(MEDIA)
+  probabilidadCierre       Int                        @default(0) @map("probabilidad_cierre")
+  motivoPerdida            String?                    @map("motivo_perdida") @db.VarChar(255)
+  observaciones            String?                    @db.Text
+  active                   Boolean                    @default(true)
+  deletedAt                DateTime?                  @map("deleted_at")
+  createdAt                DateTime                   @default(now()) @map("created_at")
+  updatedAt                DateTime                   @updatedAt @map("updated_at")
+  empresaId                String                     @map("empresa_id")
+  clienteId                String                     @map("cliente_id")
+  asesorId                 String                     @map("asesor_id")
+  empresa                  Empresa                    @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente                  Cliente                    @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  asesor                   Usuario                    @relation(fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reservas                 Reserva[]
+  seguimientos             SeguimientoAgenda[]
+  visitas                  VisitaPropiedad[]
+
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([asesorId])
+  @@index([etapa])
+  @@index([prioridad])
+  @@index([proximaFechaSeguimiento])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, etapa])
+  @@index([empresaId, fechaIngreso])
+  @@index([empresaId, proximaFechaSeguimiento])
+  @@map("pipelines_comerciales")
+}
+
+model SeguimientoAgenda {
+  id                String               @id @default(cuid())
+  fechaProgramada   DateTime             @map("fecha_programada")
+  recordatorioAt    DateTime?            @map("recordatorio_at")
+  prioridad         PrioridadSeguimiento @default(MEDIA)
+  estado            EstadoSeguimiento    @default(PENDIENTE)
+  tipo              TipoSeguimiento
+  observaciones     String?              @db.Text
+  active            Boolean              @default(true)
+  deletedAt         DateTime?            @map("deleted_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  empresaId         String               @map("empresa_id")
+  asesorId          String               @map("asesor_id")
+  clienteId         String               @map("cliente_id")
+  pipelineId        String?              @map("pipeline_id")
+  empresa           Empresa              @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  asesor            Usuario              @relation(fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente           Cliente              @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  pipeline          PipelineComercial?   @relation(fields: [pipelineId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  visitas           VisitaPropiedad[]
+
+  @@index([empresaId])
+  @@index([asesorId])
+  @@index([clienteId])
+  @@index([pipelineId])
+  @@index([estado])
+  @@index([tipo])
+  @@index([fechaProgramada])
+  @@index([recordatorioAt])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, fechaProgramada])
+  @@index([asesorId, estado, fechaProgramada])
+  @@map("seguimientos_agenda")
+}
+
+model VisitaPropiedad {
+  id               String               @id @default(cuid())
+  fechaHora        DateTime             @map("fecha_hora")
+  duracionEstimada Int?                 @map("duracion_estimada")
+  lugarEncuentro   String?              @map("lugar_encuentro") @db.VarChar(255)
+  estado           EstadoVisitaPropiedad @default(PROGRAMADA)
+  resultado        String?              @db.Text
+  observaciones    String?              @db.Text
+  active           Boolean              @default(true)
+  deletedAt        DateTime?            @map("deleted_at")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  empresaId        String               @map("empresa_id")
+  clienteId        String               @map("cliente_id")
+  asesorId         String               @map("asesor_id")
+  propiedadId      String               @map("propiedad_id")
+  pipelineId       String?              @map("pipeline_id")
+  seguimientoId    String?              @map("seguimiento_id")
+  reprogramadaDeId String?              @map("reprogramada_de_id")
+  empresa          Empresa              @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente          Cliente              @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  asesor           Usuario              @relation(fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  propiedad        Propiedad            @relation(fields: [propiedadId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  pipeline         PipelineComercial?   @relation(fields: [pipelineId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  seguimiento      SeguimientoAgenda?   @relation(fields: [seguimientoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reservas         Reserva[]
+  reprogramadaDe   VisitaPropiedad?     @relation("VisitaReprogramacion", fields: [reprogramadaDeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reprogramaciones VisitaPropiedad[]    @relation("VisitaReprogramacion")
+
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([asesorId])
+  @@index([propiedadId])
+  @@index([pipelineId])
+  @@index([seguimientoId])
+  @@index([estado])
+  @@index([fechaHora])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, fechaHora])
+  @@index([asesorId, fechaHora])
+  @@map("visitas_propiedades")
+}
+
+model Reserva {
+  id               String          @id @default(cuid())
+  estado           EstadoReserva   @default(ACTIVA)
+  montoSeparacion  Decimal         @map("monto_separacion") @db.Decimal(14, 2)
+  fechaReserva     DateTime        @default(now()) @map("fecha_reserva")
+  fechaVencimiento DateTime        @map("fecha_vencimiento")
+  observaciones    String?         @db.Text
+  active           Boolean         @default(true)
+  deletedAt        DateTime?       @map("deleted_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  empresaId        String          @map("empresa_id")
+  clienteId        String          @map("cliente_id")
+  propiedadId      String          @map("propiedad_id")
+  asesorId         String          @map("asesor_id")
+  pipelineId       String?         @map("pipeline_id")
+  visitaId         String?         @map("visita_id")
+  empresa          Empresa         @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente          Cliente         @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  propiedad        Propiedad       @relation(fields: [propiedadId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  asesor           Usuario         @relation(fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  pipeline         PipelineComercial? @relation(fields: [pipelineId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  venta            Venta?
+  visita           VisitaPropiedad? @relation(fields: [visitaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  documentos       Documento[]
+
+  @@unique([visitaId])
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([propiedadId])
+  @@index([asesorId])
+  @@index([pipelineId])
+  @@index([estado])
+  @@index([fechaReserva])
+  @@index([fechaVencimiento])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, estado])
+  @@index([empresaId, propiedadId, estado])
+  @@map("reservas")
+}
+
+model Venta {
+  id                String          @id @default(cuid())
+  estado            EstadoVenta     @default(PENDIENTE_FORMALIZACION)
+  metodoPago        MetodoPagoVenta @map("metodo_pago")
+  fechaVenta        DateTime        @default(now()) @map("fecha_venta")
+  precioFinal       Decimal         @map("precio_final") @db.Decimal(14, 2)
+  descuento         Decimal         @default(0) @db.Decimal(14, 2)
+  impuestos         Decimal?        @db.Decimal(14, 2)
+  totalVenta        Decimal         @map("total_venta") @db.Decimal(14, 2)
+  saldoPendiente    Decimal         @default(0) @map("saldo_pendiente") @db.Decimal(14, 2)
+  observaciones     String?         @db.Text
+  active            Boolean         @default(true)
+  deletedAt         DateTime?       @map("deleted_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  empresaId         String          @map("empresa_id")
+  reservaId         String          @unique @map("reserva_id")
+  clienteId         String          @map("cliente_id")
+  propiedadId       String          @map("propiedad_id")
+  asesorId          String          @map("asesor_id")
+  empresa           Empresa         @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reserva           Reserva         @relation(fields: [reservaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente           Cliente         @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  propiedad         Propiedad       @relation(fields: [propiedadId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  asesor            Usuario         @relation(fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  pagos             Pago[]
+  documentos        Documento[]
+  contratos         Contrato[]
+  comisiones        Comision[]
+
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([propiedadId])
+  @@index([asesorId])
+  @@index([estado])
+  @@index([metodoPago])
+  @@index([fechaVenta])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, estado])
+  @@index([empresaId, fechaVenta])
+  @@map("ventas")
+}
+
+model Pago {
+  id             String         @id @default(cuid())
+  numeroCuota    Int?           @map("numero_cuota")
+  fechaVencimiento DateTime?    @map("fecha_vencimiento")
+  fechaPago      DateTime?      @map("fecha_pago")
+  monto          Decimal        @db.Decimal(14, 2)
+  saldo          Decimal        @default(0) @db.Decimal(14, 2)
+  estado         EstadoPago     @default(PENDIENTE)
+  metodoPago     MetodoPagoPago? @map("metodo_pago")
+  numeroOperacion String?       @map("numero_operacion") @db.VarChar(100)
+  observaciones  String?        @db.Text
+  active         Boolean        @default(true)
+  deletedAt      DateTime?      @map("deleted_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  empresaId      String         @map("empresa_id")
+  ventaId        String         @map("venta_id")
+  registradoPorId String?       @map("registrado_por_id")
+  empresa        Empresa        @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  venta          Venta          @relation(fields: [ventaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  registradoPor  Usuario?       @relation(fields: [registradoPorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  documentos     Documento[]
+
+  @@unique([ventaId, numeroCuota])
+  @@index([empresaId])
+  @@index([ventaId])
+  @@index([registradoPorId])
+  @@index([estado])
+  @@index([metodoPago])
+  @@index([fechaVencimiento])
+  @@index([fechaPago])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, estado])
+  @@index([empresaId, ventaId])
+  @@index([ventaId, estado])
+  @@map("pagos")
+}
+
+model Documento {
+  id                String                @id @default(cuid())
+  tipo              TipoDocumentoDocumento @default(OTRO)
+  nombreArchivo     String                @map("nombre_archivo") @db.VarChar(255)
+  nombreOriginal    String                @map("nombre_original") @db.VarChar(255)
+  mimeType          String                @map("mime_type") @db.VarChar(150)
+  extension         String?               @db.VarChar(20)
+  tamanoBytes       BigInt                @map("tamano_bytes")
+  rutaAlmacenamiento String               @map("ruta_almacenamiento") @db.VarChar(500)
+  hashArchivo       String                @map("hash_archivo") @db.VarChar(128)
+  observaciones     String?               @db.Text
+  active            Boolean               @default(true)
+  deletedAt         DateTime?             @map("deleted_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  empresaId         String                @map("empresa_id")
+  subidoPorId       String                @map("subido_por_id")
+  clienteId         String?               @map("cliente_id")
+  propiedadId       String?               @map("propiedad_id")
+  reservaId         String?               @map("reserva_id")
+  ventaId           String?               @map("venta_id")
+  pagoId            String?               @map("pago_id")
+  empresa           Empresa               @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  subidoPor         Usuario               @relation(fields: [subidoPorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente           Cliente?              @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  propiedad         Propiedad?            @relation(fields: [propiedadId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reserva           Reserva?              @relation(fields: [reservaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  venta             Venta?                @relation(fields: [ventaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  pago              Pago?                 @relation(fields: [pagoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([empresaId])
+  @@index([subidoPorId])
+  @@index([clienteId])
+  @@index([propiedadId])
+  @@index([reservaId])
+  @@index([ventaId])
+  @@index([pagoId])
+  @@index([tipo])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, tipo])
+  @@index([empresaId, createdAt])
+  @@map("documentos")
+}
+
+model Contrato {
+  id              String         @id @default(cuid())
+  numeroContrato  String         @map("numero_contrato") @db.VarChar(50)
+  version         Int            @default(1)
+  fechaEmision    DateTime       @default(now()) @map("fecha_emision")
+  fechaFirma      DateTime?      @map("fecha_firma")
+  fechaVencimiento DateTime?     @map("fecha_vencimiento")
+  estado          EstadoContrato @default(PENDIENTE_FIRMA)
+  tipo            TipoContrato
+  montoContrato   Decimal        @map("monto_contrato") @db.Decimal(14, 2)
+  observaciones   String?        @db.Text
+  rutaPdfFirmado  String?        @map("ruta_pdf_firmado") @db.VarChar(500)
+  hashDocumento   String?        @map("hash_documento") @db.VarChar(128)
+  active          Boolean        @default(true)
+  deletedAt       DateTime?      @map("deleted_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  empresaId       String         @map("empresa_id")
+  ventaId         String         @map("venta_id")
+  clienteId       String         @map("cliente_id")
+  propiedadId     String         @map("propiedad_id")
+  responsableId   String         @map("responsable_id")
+  empresa         Empresa        @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  venta           Venta          @relation(fields: [ventaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente         Cliente        @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  propiedad       Propiedad      @relation(fields: [propiedadId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  responsable     Usuario        @relation(fields: [responsableId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([empresaId, numeroContrato, version])
+  @@index([empresaId])
+  @@index([ventaId])
+  @@index([clienteId])
+  @@index([propiedadId])
+  @@index([responsableId])
+  @@index([estado])
+  @@index([tipo])
+  @@index([fechaEmision])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, estado])
+  @@index([empresaId, ventaId])
+  @@index([empresaId, fechaEmision])
+  @@index([ventaId, estado])
+  @@map("contratos")
+}
+
+model Comision {
+  id               String         @id @default(cuid())
+  porcentajeComision Decimal      @map("porcentaje_comision") @db.Decimal(5, 2)
+  montoComision    Decimal        @map("monto_comision") @db.Decimal(14, 2)
+  estado           EstadoComision @default(PENDIENTE)
+  fechaGeneracion  DateTime       @default(now()) @map("fecha_generacion")
+  fechaPago        DateTime?      @map("fecha_pago")
+  observaciones    String?        @db.Text
+  active           Boolean        @default(true)
+  deletedAt        DateTime?      @map("deleted_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  empresaId        String         @map("empresa_id")
+  ventaId          String         @map("venta_id")
+  asesorId         String         @map("asesor_id")
+  empresa          Empresa        @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  venta            Venta          @relation(fields: [ventaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  asesor           Usuario        @relation(fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([ventaId, asesorId])
+  @@index([empresaId])
+  @@index([ventaId])
+  @@index([asesorId])
+  @@index([estado])
+  @@index([fechaGeneracion])
+  @@index([fechaPago])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, estado])
+  @@index([empresaId, asesorId])
+  @@index([empresaId, ventaId])
+  @@index([ventaId, estado])
+  @@map("comisiones")
+}
+
+enum TipoNotificacion {
+  SEGUIMIENTO_PENDIENTE
+  VISITA_PROXIMA
+  RESERVA_POR_VENCER
+  TAREA_PENDIENTE
+}
+
+model Notificacion {
+  id              String           @id @default(cuid())
+  tipo            TipoNotificacion
+  titulo          String           @db.VarChar(200)
+  mensaje         String?          @db.Text
+  entidadId       String?          @map("entidad_id") @db.VarChar(50)
+  entidadTipo     String?          @map("entidad_tipo") @db.VarChar(50)
+  leida           Boolean          @default(false)
+  fechaNotificacion DateTime      @map("fecha_notificacion")
+  fechaLeida      DateTime?        @map("fecha_leida")
+  active          Boolean          @default(true)
+  deletedAt       DateTime?        @map("deleted_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  empresaId       String           @map("empresa_id")
+  asesorId        String           @map("asesor_id")
+  empresa         Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  asesor          Usuario          @relation(fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([empresaId, asesorId, tipo, entidadId])
+  @@index([empresaId])
+  @@index([asesorId])
+  @@index([tipo])
+  @@index([leida])
+  @@index([fechaNotificacion])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, asesorId, leida])
+  @@index([empresaId, fechaNotificacion])
+  @@map("notificaciones")
+}

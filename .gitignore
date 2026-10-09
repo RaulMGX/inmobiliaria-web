@@ -1,0 +1,13 @@
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+
+backend/node_modules/
+backend/dist/
+backend/coverage/
+backend/src/infrastructure/database/prisma/generated/
+backend/.env
+backend/.env.*
+!backend/.env.example
