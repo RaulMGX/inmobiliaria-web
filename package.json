@@ -1,0 +1,19 @@
+{
+  "name": "crm-antony-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Package.json en raiz SOLO para que Vercel detecte Next.js en el check de framework. El build real corre desde frontend/ mediante Root Directory ./frontend en Vercel settings, y usa frontend/package.json original con Next 16.",
+  "engines": {
+    "node": ">=20.17.0 <=25"
+  },
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm run start"
+  },
+  "dependencies": {
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  }
+}
