@@ -1,5 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "installCommand": "echo skipping-dup-install",
+  "buildCommand": "npm ls next >/dev/null 2>&1 || true; npm run build --if-present",
   "regions": ["iad1"]
 }
