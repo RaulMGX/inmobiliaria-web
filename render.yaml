@@ -4,9 +4,10 @@ services:
     runtime: node
     rootDir: backend
     plan: free
-    buildCommand: npm ci && npm run build:render
-    startCommand: node dist/src/main.js
+    buildCommand: npm install && npm run build:render
+    startCommand: npm run start:render
     autoDeploy: true
+    numInstances: 1
     pullRequestPreviewsEnabled: false
     healthCheckPath: /api/v1/health
     envVars:
@@ -23,4 +24,4 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ALLOWED_ORIGINS
-        value: https://*.vercel.app
+        value: 'https://*.vercel.app,https://*.onrender.com'
