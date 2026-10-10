@@ -1,10 +1,11 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Express } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestScopeInterceptor } from './modules/auth/context/request-scope.interceptor';
 
 async function bootstrap() {
@@ -68,6 +69,8 @@ async function bootstrap() {
     }),
   );
   app.setGlobalPrefix(apiPrefix);
+  const adapterHost = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new GlobalExceptionFilter(adapterHost));
   app.useGlobalInterceptors(new RequestScopeInterceptor());
   app.useGlobalPipes(
     new ValidationPipe({
