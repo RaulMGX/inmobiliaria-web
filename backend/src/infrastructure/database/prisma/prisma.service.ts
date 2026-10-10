@@ -169,9 +169,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       connectionTimeoutMillis: 30000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
+      ...({ family: 4 } as any),
     });
-    (pool as any).options = (pool as any).options ?? {};
-    ((pool as any).options as any).family = 4;
     const adapter = new PrismaPg(pool);
     this.#base = new (PrismaClient as any)({ adapter }) as TPrismaClient;
     this.#scoped = this.#base.$extends({
