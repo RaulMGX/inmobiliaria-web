@@ -2,10 +2,19 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import * as dns from 'node:dns';
 import type { Prisma, PrismaClient as TPrismaClient } from './generated/client';
 import { PrismaClient } from './generated/client';
 import { getScopeOrNull } from '../../../modules/auth/context/request-scope';
 import type { JwtPayload } from '../../../modules/auth/types/auth.types';
+
+try {
+  (dns as any).setDefaultResultOrder?.('ipv4first');
+} catch {}
+process.env.NODE_OPTIONS = process.env.NODE_OPTIONS ?? '';
+if (!process.env.NODE_OPTIONS.includes('--dns-result-order')) {
+  process.env.NODE_OPTIONS += ' --dns-result-order=ipv4first';
+}
 
 type PrismaExtended = TPrismaClient & Record<string, any>;
 
@@ -155,7 +164,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   constructor(configService: ConfigService) {
     const databaseUrl = configService.get<string>('DATABASE_URL') ?? process.env.DATABASE_URL ?? '';
-    const pool = new Pool({ connectionString: databaseUrl });
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      connectionTimeoutMillis: 30000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+    });
+    (pool as any).options = (pool as any).options ?? {};
+    ((pool as any).options as any).family = 4;
     const adapter = new PrismaPg(pool);
     this.#base = new (PrismaClient as any)({ adapter }) as TPrismaClient;
     this.#scoped = this.#base.$extends({
