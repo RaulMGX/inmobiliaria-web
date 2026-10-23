@@ -1,6 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  ArrayUnique,
+  IsArray,
   IsDateString,
   IsEmail,
   IsEnum,
@@ -180,5 +183,16 @@ export class CreateClienteDto {
   @IsOptional()
   @IsEnum(UrgenciaCompraCliente)
   urgenciaCompra?: string;
+
+  @ApiProperty({
+    type: [String],
+    example: ['cm123proyecto'],
+    description: 'Proyectos de interés del cliente (al menos uno).',
+  })
+  @IsArray()
+  @ArrayNotEmpty({ message: 'Debes seleccionar al menos un proyecto.' })
+  @ArrayUnique()
+  @IsString({ each: true })
+  proyectoIds!: string[];
 }
 

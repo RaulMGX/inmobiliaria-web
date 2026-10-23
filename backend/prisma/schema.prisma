@@ -332,6 +332,7 @@ model Proyecto {
   empresaId    String         @map("empresa_id")
   empresa      Empresa        @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   propiedades  Propiedad[]
+  clientes     ClienteProyecto[]
 
   @@unique([empresaId, nombre])
   @@index([empresaId])
@@ -415,13 +416,14 @@ model Cliente {
   updatedAt           DateTime               @updatedAt @map("updated_at")
   empresaId           String                 @map("empresa_id")
   empresa             Empresa                @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  pipelines           PipelineComercial[]
+  pipeline            PipelineComercial[]
   reservas            Reserva[]
   seguimientos        SeguimientoAgenda[]
   ventas              Venta[]
   visitas             VisitaPropiedad[]
   documentos          Documento[]
   contratos           Contrato[]
+  proyectos           ClienteProyecto[]
 
   @@unique([empresaId, tipoDocumento, numeroDocumento])
   @@index([empresaId])
@@ -430,6 +432,20 @@ model Cliente {
   @@index([deletedAt])
   @@index([empresaId, createdAt])
   @@map("clientes")
+}
+
+model ClienteProyecto {
+  id         String   @id @default(cuid())
+  clienteId  String   @map("cliente_id")
+  proyectoId String   @map("proyecto_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  cliente    Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([clienteId, proyectoId])
+  @@index([clienteId])
+  @@index([proyectoId])
+  @@map("cliente_proyectos")
 }
 
 model PipelineComercial {

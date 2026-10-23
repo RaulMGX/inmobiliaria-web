@@ -38,6 +38,12 @@ interface ClienteLight {
   bancoPreferencia?: string | null;
   preAprobacionDetalle?: string | null;
   urgenciaCompra?: string | null;
+  proyectos?: ProyectoOption[] | null;
+}
+
+interface ProyectoOption {
+  id: string;
+  nombre: string;
 }
 
 interface Paginated<T> {
@@ -144,6 +150,7 @@ const EMPTY_FORM = {
   bancoPreferencia: '',
   preAprobacionDetalle: '',
   urgenciaCompra: '',
+  proyectoIds: [] as string[],
 };
 
 export default function ClientesPage() {
@@ -166,6 +173,7 @@ export default function ClientesPage() {
   const [data, setData] = useState<Paginated<ClienteLight> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [proyectos, setProyectos] = useState<ProyectoOption[]>([]);
 
   const debRef = useRef<number | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -193,6 +201,22 @@ export default function ClientesPage() {
   }, [filters.page, filters.limit, filters.estado, filters.sortBy, filters.sortDirection]);
 
   useEffect(() => {
+    if (!empresaId) return;
+    let activo = true;
+    http
+      .get<ProyectoOption[]>(`/empresas/${empresaId}/proyectos`)
+      .then(({ data: res }) => {
+        if (activo) setProyectos(res);
+      })
+      .catch(() => {
+        if (activo) setProyectos([]);
+      });
+    return () => {
+      activo = false;
+    };
+  }, [empresaId]);
+
+  useEffect(() => {
     if (!searchRef.current) return;
     const el = searchRef.current;
     const h = () => {
@@ -218,7 +242,7 @@ export default function ClientesPage() {
   function openCreate() {
     setMode('create');
     setEditing(null);
-    setForm({ ...EMPTY_FORM });
+    setForm({ ...EMPTY_FORM, proyectoIds: [] });
     setFormErr(null);
     queueMicrotask(() => {
       if (modalRef.current && (window as any).bootstrap) {
@@ -258,6 +282,7 @@ export default function ClientesPage() {
       bancoPreferencia: c.bancoPreferencia || '',
       preAprobacionDetalle: c.preAprobacionDetalle || '',
       urgenciaCompra: c.urgenciaCompra || '',
+      proyectoIds: (c.proyectos ?? []).map((p) => p.id),
     });
     setFormErr(null);
     queueMicrotask(() => {
@@ -276,8 +301,17 @@ export default function ClientesPage() {
     } catch { /* ignore */ }
     setEditing(null);
     setMode('create');
-    setForm({ ...EMPTY_FORM });
+    setForm({ ...EMPTY_FORM, proyectoIds: [] });
     setFormErr(null);
+  }
+
+  function toggleProyecto(id: string) {
+    setForm((f) => ({
+      ...f,
+      proyectoIds: f.proyectoIds.includes(id)
+        ? f.proyectoIds.filter((x) => x !== id)
+        : [...f.proyectoIds, id],
+    }));
   }
 
   function validateForm() {
@@ -286,6 +320,7 @@ export default function ClientesPage() {
     if (!form.celular.trim()) return 'Ingresa el número de celular.';
     if (!form.medioCaptacion) return 'Selecciona el medio de captación.';
     if (form.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) return 'Correo no válido.';
+    if (form.proyectoIds.length === 0) return 'Selecciona al menos un proyecto de interés.';
     return null;
   }
 
@@ -323,6 +358,7 @@ export default function ClientesPage() {
         bancoPreferencia: form.bancoPreferencia || undefined,
         preAprobacionDetalle: form.preAprobacionDetalle || undefined,
         urgenciaCompra: form.urgenciaCompra || undefined,
+        proyectoIds: form.proyectoIds,
       };
       if (mode === 'create') {
         await http.post(`/empresas/${empresaId}/clientes`, payload);
@@ -456,6 +492,9 @@ export default function ClientesPage() {
                         <div className="d-flex flex-wrap gap-1 mt-1" style={{ maxWidth: 360 }}>
                           {(() => {
                             const chips: { label: string; cls: string; icon?: string }[] = [];
+                            (c.proyectos ?? []).forEach((p) => {
+                              chips.push({ label: `📁 ${p.nombre}`, cls: 'badge-soft-info' });
+                            });
                             const min = c.presupuestoMinimo;
                             const max = c.presupuestoMaximo;
                             if (min != null || max != null) {
@@ -631,6 +670,40 @@ export default function ClientesPage() {
                       <span>Perfil de compra y preferencias</span>
                       <small className="text-muted ms-auto">Recomendado para seguimiento comercial</small>
                     </div>
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label small fw-semibold">
+                      Proyectos de interés <span className="text-danger">*</span>
+                    </label>
+                    {proyectos.length === 0 ? (
+                      <div className="alert alert-warning small py-2 mb-0">
+                        No hay proyectos registrados en esta empresa. Registra un proyecto antes de crear clientes.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="border rounded-2 p-2" style={{ maxHeight: 140, overflowY: 'auto' }}>
+                          {proyectos.map((p) => (
+                            <div className="form-check" key={p.id}>
+                              <input
+                                className="form-check-input"
+                                type="checkbox"
+                                id={`cliente-proyecto-${p.id}`}
+                                checked={form.proyectoIds.includes(p.id)}
+                                onChange={() => toggleProyecto(p.id)}
+                              />
+                              <label className="form-check-label small" htmlFor={`cliente-proyecto-${p.id}`}>
+                                {p.nombre}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                        <small className={form.proyectoIds.length === 0 ? 'text-danger' : 'text-muted'}>
+                          {form.proyectoIds.length === 0
+                            ? 'Selecciona al menos un proyecto.'
+                            : `${form.proyectoIds.length} proyecto(s) seleccionado(s).`}
+                        </small>
+                      </>
+                    )}
                   </div>
                   <div className="col-md-3">
                     <label className="form-label small fw-semibold">1. Tipo propiedad de interés</label>

@@ -135,7 +135,7 @@ const MODEL_DELEGATES = [
   'empresa', 'rol', 'usuario', 'proyecto', 'etapaPipeline',
   'cliente', 'propiedad', 'pipelineComercial', 'seguimientoAgenda',
   'visitaPropiedad', 'reserva', 'venta', 'pago', 'contratoPlantilla',
-  'contrato', 'documento', 'comision', 'notificacion',
+  'contrato', 'documento', 'comision', 'notificacion', 'clienteProyecto',
 ];
 
 @Injectable()
@@ -144,6 +144,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   readonly #scoped: PrismaExtended;
 
   declare readonly cliente: PrismaExtended['cliente'];
+  declare readonly clienteProyecto: PrismaExtended['clienteProyecto'];
   declare readonly propiedad: PrismaExtended['propiedad'];
   declare readonly pipelineComercial: PrismaExtended['pipelineComercial'];
   declare readonly seguimientoAgenda: PrismaExtended['seguimientoAgenda'];

@@ -10,6 +10,10 @@ import { CreateClienteDto } from './dto/create-cliente.dto';
 import { FindClientesQueryDto } from './dto/find-clientes.query.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
 
+type ClienteConProyectos = Record<string, any> & {
+  proyectos: { proyecto: { id: string; nombre: string } }[];
+};
+
 @Injectable()
 export class ClientesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -21,11 +25,14 @@ export class ClientesService {
       dto.tipoDocumento,
       dto.numeroDocumento,
     );
+    await this.ensureProyectosDisponibles(empresaId, dto.proyectoIds);
 
     try {
-      return await this.prisma.cliente.create({
+      const cliente = await this.prisma.cliente.create({
         data: this.buildCreateData(empresaId, dto),
       });
+      await this.syncProyectos(cliente.id, dto.proyectoIds);
+      return await this.findOne(empresaId, cliente.id);
     } catch (error: any) {
       this.handlePrismaError(error);
     }
@@ -39,18 +46,19 @@ export class ClientesService {
     const where = this.buildFindWhere(empresaId, query);
     const orderBy = this.buildOrderBy(query);
 
-    const [data, total] = await this.prisma.$transaction([
+    const [clientes, total] = (await this.prisma.$transaction([
       this.prisma.cliente.findMany({
         where,
         orderBy,
         skip,
         take: limit,
+        include: this.proyectosInclude(),
       }),
       this.prisma.cliente.count({ where }),
-    ]);
+    ])) as [ClienteConProyectos[], number];
 
     return {
-      data,
+      data: clientes.map((cliente) => this.mapCliente(cliente)),
       meta: {
         page,
         limit,
@@ -68,13 +76,14 @@ export class ClientesService {
         active: true,
         deletedAt: null,
       },
+      include: this.proyectosInclude(),
     });
 
     if (!cliente) {
       throw new NotFoundException('Cliente no encontrado para la empresa indicada.');
     }
 
-    return cliente;
+    return this.mapCliente(cliente);
   }
 
   async update(empresaId: string, id: string, dto: UpdateClienteDto) {
@@ -88,11 +97,17 @@ export class ClientesService {
       id,
     );
 
+    if (dto.proyectoIds !== undefined) {
+      await this.ensureProyectosDisponibles(empresaId, dto.proyectoIds);
+    }
+
     try {
-      return await this.prisma.cliente.update({
+      await this.prisma.cliente.update({
         where: { id },
         data: this.buildUpdateData(dto),
       });
+      await this.syncProyectos(id, dto.proyectoIds);
+      return await this.findOne(empresaId, id);
     } catch (error: any) {
       this.handlePrismaError(error);
     }
@@ -176,6 +191,80 @@ export class ClientesService {
 
   private buildUpdateData(dto: UpdateClienteDto): Prisma.ClienteUpdateInput {
     return this.normalizeClientePayload(dto) as unknown as Prisma.ClienteUpdateInput;
+  }
+
+  private proyectosInclude() {
+    return {
+      proyectos: {
+        select: {
+          proyecto: { select: { id: true, nombre: true } },
+        },
+      },
+    } satisfies Prisma.ClienteInclude;
+  }
+
+  private mapCliente<
+    T extends { proyectos: { proyecto: { id: string; nombre: string } }[] },
+  >(cliente: T) {
+    const { proyectos, ...rest } = cliente;
+
+    return {
+      ...rest,
+      proyectos: proyectos.map((item) => item.proyecto),
+    };
+  }
+
+  private normalizeProyectoIds(proyectoIds?: string[]) {
+    return Array.from(
+      new Set(
+        (proyectoIds ?? [])
+          .map((id) => id?.trim())
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+  }
+
+  private async ensureProyectosDisponibles(
+    empresaId: string,
+    proyectoIds?: string[],
+  ) {
+    const ids = this.normalizeProyectoIds(proyectoIds);
+
+    if (ids.length === 0) {
+      throw new BadRequestException('Debes seleccionar al menos un proyecto.');
+    }
+
+    const proyectos = await this.prisma.proyecto.findMany({
+      where: {
+        id: { in: ids },
+        empresaId,
+        active: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (proyectos.length !== ids.length) {
+      throw new BadRequestException(
+        'Uno o más proyectos no existen o no pertenecen a la empresa.',
+      );
+    }
+  }
+
+  private async syncProyectos(clienteId: string, proyectoIds?: string[]) {
+    if (proyectoIds === undefined) {
+      return;
+    }
+
+    const ids = this.normalizeProyectoIds(proyectoIds);
+
+    await this.prisma.$transaction([
+      this.prisma.clienteProyecto.deleteMany({ where: { clienteId } }),
+      this.prisma.clienteProyecto.createMany({
+        data: ids.map((proyectoId) => ({ clienteId, proyectoId })),
+        skipDuplicates: true,
+      }),
+    ]);
   }
 
   private normalizeClientePayload(dto: Partial<CreateClienteDto>) {

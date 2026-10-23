@@ -12,6 +12,7 @@ import { NotificacionesModule } from './modules/notificaciones/notificaciones.mo
 import { PagosModule } from './modules/pagos/pagos.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { PropiedadesModule } from './modules/propiedades/propiedades.module';
+import { ProyectosModule } from './modules/proyectos/proyectos.module';
 import { ReportesModule } from './modules/reportes/reportes.module';
 import { ReservasModule } from './modules/reservas/reservas.module';
 import { VentasModule } from './modules/ventas/ventas.module';
@@ -40,6 +41,7 @@ import { HealthController } from './health.controller';
     PagosModule,
     PipelineModule,
     PropiedadesModule,
+    ProyectosModule,
     ReportesModule,
     ReservasModule,
     VentasModule,
