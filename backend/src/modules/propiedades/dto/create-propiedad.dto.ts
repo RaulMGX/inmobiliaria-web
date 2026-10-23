@@ -123,9 +123,14 @@ export class CreatePropiedadDto {
   @MaxLength(1000)
   descripcion?: string;
 
-  @ApiProperty({ example: 'cm123proyecto' })
+  @ApiPropertyOptional({ example: 'cm123proyecto' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   proyectoId!: string;
-}
 
+  @ApiPropertyOptional({ example: 'Proyecto Los Olivos' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  proyectoNombre?: string;
+}

@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '../../infrastructure/database/prisma/generated/client';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
+import {
+  EstadoProyecto,
+  TipoProyecto,
+} from '../../infrastructure/database/prisma/generated/enums';
 import { CreatePropiedadDto } from './dto/create-propiedad.dto';
 import { FindPropiedadesQueryDto } from './dto/find-propiedades.query.dto';
 import { UpdatePropiedadDto } from './dto/update-propiedad.dto';
@@ -16,12 +20,17 @@ export class PropiedadesService {
 
   async create(empresaId: string, dto: CreatePropiedadDto) {
     this.validateBusinessRules(dto);
-    await this.ensureProyectoDisponible(empresaId, dto.proyectoId);
+    const proyectoId = await this.resolveProyectoId(empresaId, dto);
+    if (!proyectoId) {
+      throw new BadRequestException(
+        'Debes seleccionar un proyecto existente o escribir un nombre de proyecto.',
+      );
+    }
     await this.ensureCodigoDisponible(dto.codigoInterno);
 
     try {
       return await this.prisma.propiedad.create({
-        data: this.buildCreateData(dto),
+        data: this.buildCreateData(dto, proyectoId),
         include: this.defaultInclude(),
       });
     } catch (error: any) {
@@ -82,9 +91,7 @@ export class PropiedadesService {
 
     await this.findOne(empresaId, id);
 
-    if (dto.proyectoId) {
-      await this.ensureProyectoDisponible(empresaId, dto.proyectoId);
-    }
+    const proyectoId = await this.resolveProyectoId(empresaId, dto, false);
 
     if (dto.codigoInterno) {
       await this.ensureCodigoDisponible(dto.codigoInterno, id);
@@ -93,7 +100,7 @@ export class PropiedadesService {
     try {
       return await this.prisma.propiedad.update({
         where: { id },
-        data: this.buildUpdateData(dto),
+        data: this.buildUpdateData(dto, proyectoId),
         include: this.defaultInclude(),
       });
     } catch (error: any) {
@@ -185,9 +192,11 @@ export class PropiedadesService {
     return { [sortBy]: direction };
   }
 
-  private buildCreateData(dto: CreatePropiedadDto): Prisma.PropiedadCreateInput {
+  private buildCreateData(
+    dto: CreatePropiedadDto,
+    proyectoId: string,
+  ): Prisma.PropiedadCreateInput {
     const normalized = this.normalizePropiedadPayload(dto);
-    const { proyectoId } = dto;
 
     return {
       ...normalized,
@@ -195,12 +204,15 @@ export class PropiedadesService {
     } as unknown as Prisma.PropiedadCreateInput;
   }
 
-  private buildUpdateData(dto: UpdatePropiedadDto): Prisma.PropiedadUpdateInput {
+  private buildUpdateData(
+    dto: UpdatePropiedadDto,
+    proyectoId?: string,
+  ): Prisma.PropiedadUpdateInput {
     const normalized = this.normalizePropiedadPayload(dto);
 
     return {
       ...normalized,
-      ...(dto.proyectoId ? { proyectoId: dto.proyectoId } : {}),
+      ...(proyectoId ? { proyectoId } : {}),
     } as unknown as Prisma.PropiedadUpdateInput;
   }
 
@@ -260,6 +272,65 @@ export class PropiedadesService {
         'No se puede enviar estado y disponible al mismo tiempo.',
       );
     }
+  }
+
+  private async resolveProyectoId(
+    empresaId: string,
+    dto: Partial<CreatePropiedadDto>,
+    required = true,
+  ) {
+    const proyectoNombre = dto.proyectoNombre?.trim();
+    const proyectoId = dto.proyectoId?.trim();
+
+    if (proyectoNombre) {
+      const existente = await this.prisma.proyecto.findFirst({
+        where: {
+          empresaId,
+          nombre: proyectoNombre,
+          active: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      if (existente) {
+        return existente.id;
+      }
+
+      const creado = await this.prisma.proyecto.create({
+        data: {
+          nombre: proyectoNombre,
+          tipoProyecto: this.mapTipoProyecto(dto.tipoPropiedad),
+          estado: EstadoProyecto.ACTIVO,
+          direccion: dto.direccion?.trim() || null,
+          distrito: dto.distrito?.trim() || null,
+          ciudad: dto.ciudad?.trim() || null,
+          empresaId,
+        },
+        select: { id: true },
+      });
+
+      return creado.id;
+    }
+
+    if (proyectoId) {
+      await this.ensureProyectoDisponible(empresaId, proyectoId);
+      return proyectoId;
+    }
+
+    if (required) {
+      throw new BadRequestException(
+        'Debes seleccionar un proyecto existente o escribir un nombre de proyecto.',
+      );
+    }
+
+    return undefined;
+  }
+
+  private mapTipoProyecto(tipoPropiedad?: string) {
+    return tipoPropiedad === 'DEPARTAMENTO'
+      ? TipoProyecto.DEPARTAMENTOS
+      : TipoProyecto.CASAS;
   }
 
   private async ensureProyectoDisponible(empresaId: string, proyectoId: string) {
@@ -323,4 +394,3 @@ export class PropiedadesService {
     throw error;
   }
 }
-

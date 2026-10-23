@@ -466,7 +466,6 @@ export default function PropiedadesPage() {
         mode={modalMode}
         initial={editTarget}
         proyectos={proyectos}
-        onProyectoAdded={(p) => setProyectos((prev) => prev.find((x) => x.id === p.id) ? prev : [...prev, p])}
         onClose={() => setModalOpen(false)}
         onSaved={onSaved}
       />
@@ -551,4 +550,3 @@ function ConfirmDeleteModal({
     </div>
   );
 }
-

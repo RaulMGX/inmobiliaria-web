@@ -88,7 +88,8 @@ export interface CreatePropiedadInput {
   latitud?: number | null;
   longitud?: number | null;
   descripcion?: string | null;
-  proyectoId: string;
+  proyectoId?: string;
+  proyectoNombre?: string;
 }
 
 export type UpdatePropiedadInput = Partial<CreatePropiedadInput>;

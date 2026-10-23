@@ -21,7 +21,6 @@ export default function PropiedadModal({
   mode,
   initial,
   proyectos,
-  onProyectoAdded,
   onClose,
   onSaved,
 }: {
@@ -29,7 +28,6 @@ export default function PropiedadModal({
   mode: Mode;
   initial: Propiedad | null;
   proyectos: ProyectoLight[];
-  onProyectoAdded: (p: ProyectoLight) => void;
   onClose: () => void;
   onSaved: (p: Propiedad, mode: Mode) => void;
 }) {
@@ -111,7 +109,8 @@ export default function PropiedadModal({
       latitud: null,
       longitud: null,
       descripcion: null,
-      proyectoId: proyectos[0]?.id || '',
+      proyectoId: '',
+      proyectoNombre: '',
     };
   }
 
@@ -145,12 +144,13 @@ export default function PropiedadModal({
       ...form,
       codigoInterno: form.codigoInterno.trim(),
       nombre: form.nombre.trim(),
-      proyectoId: form.proyectoId.trim(),
+      proyectoId: form.proyectoId?.trim() || undefined,
+      proyectoNombre: undefined,
     };
 
     if (proyectoOtro && proyectoOtroNombre.trim()) {
-      payload.proyectoId = form.proyectoId.trim() || generateProyectoTempId(proyectoOtroNombre.trim());
-      onProyectoAdded({ id: payload.proyectoId, nombre: proyectoOtroNombre.trim() });
+      payload.proyectoId = undefined;
+      payload.proyectoNombre = proyectoOtroNombre.trim();
     }
 
     setSaving(true);
@@ -166,10 +166,6 @@ export default function PropiedadModal({
     } finally {
       setSaving(false);
     }
-  }
-
-  function generateProyectoTempId(name: string) {
-    return '__TMP_' + Math.random().toString(36).slice(2, 8) + '_' + name.replace(/\s+/g, '_').slice(0, 20);
   }
 
   const title = mode === 'create' ? 'Nueva propiedad' : `Editar propiedad ${initial?.codigoInterno || ''}`;
@@ -272,7 +268,11 @@ export default function PropiedadModal({
                       name="proyectoRb"
                       id="rbProyExiste"
                       checked={!proyectoOtro}
-                      onChange={() => setProyectoOtro(false)}
+                      onChange={() => {
+                        setProyectoOtro(false);
+                        setProyectoOtroNombre('');
+                        setField('proyectoNombre', undefined);
+                      }}
                     />
                     <label className="form-check-label small" htmlFor="rbProyExiste">Seleccionar existente</label>
                   </div>
@@ -283,18 +283,23 @@ export default function PropiedadModal({
                       name="proyectoRb"
                       id="rbProyOtro"
                       checked={proyectoOtro}
-                      onChange={() => setProyectoOtro(true)}
+                      onChange={() => {
+                        setProyectoOtro(true);
+                        setField('proyectoId', '');
+                      }}
                     />
-                    <label className="form-check-label small" htmlFor="rbProyOtro">Escribir proyecto (id+nombre)</label>
+                    <label className="form-check-label small" htmlFor="rbProyOtro">Escribir proyecto nuevo</label>
                   </div>
                 </div>
                 {!proyectoOtro ? (
                   <select
                     className="form-select"
-                    value={form.proyectoId}
+                    value={form.proyectoId || ''}
                     onChange={(e) => setField('proyectoId', e.target.value)}
                   >
-                    {proyectos.length === 0 && <option value="">Sin proyectos — activa la opción "escribir"</option>}
+                    <option value="">
+                      {proyectos.length === 0 ? 'Sin proyectos - activa la opcion "escribir"' : 'Selecciona un proyecto'}
+                    </option>
                     {proyectos.map((p) => (
                       <option key={p.id} value={p.id}>{p.nombre}</option>
                     ))}
@@ -302,12 +307,12 @@ export default function PropiedadModal({
                 ) : (
                   <div className="row g-2">
                     <div className="col-12 col-md-6">
-                      <label className="form-label small fw-semibold">ID del proyecto (obligatorio)</label>
+                      <label className="form-label small fw-semibold">ID del proyecto (opcional)</label>
                       <input
                         className="form-control"
-                        value={form.proyectoId}
+                        value={form.proyectoId || ''}
                         onChange={(e) => setField('proyectoId', e.target.value)}
-                        placeholder="cm123proyecto"
+                        placeholder="Opcional"
                       />
                     </div>
                     <div className="col-12 col-md-6">
@@ -452,8 +457,8 @@ export default function PropiedadModal({
                 <div className="alert alert-light small mb-0 d-flex align-items-center gap-2 py-2">
                   <i className="bi bi-info-circle text-info" />
                   <div>
-                    El backend actual no expone endpoints de Proyectos ni de carga de archivos multimedia.
-                    Si necesitas seleccionar un proyecto existente, escribe su <code>id</code> exacto; el nombre solo se usa en la UI.
+                    Si escribes un proyecto nuevo, el sistema lo creara automaticamente para tu empresa.
+                    Si ya existe uno con ese mismo nombre, lo reutilizara.
                   </div>
                 </div>
               </div>
