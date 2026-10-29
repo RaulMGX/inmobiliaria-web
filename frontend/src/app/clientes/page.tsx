@@ -159,6 +159,8 @@ export default function ClientesPage() {
   const isAdmin = sess?.usuario.rolNombre === 'ADMIN';
 
   const modalRef = useRef<HTMLDivElement>(null);
+  const modalBodyRef = useRef<HTMLDivElement>(null);
+  const firstInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'create' | 'edit'>('create');
   const [editing, setEditing] = useState<ClienteLight | null>(null);
   const [form, setForm] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
@@ -236,6 +238,27 @@ export default function ClientesPage() {
     const t = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    const modalEl = modalRef.current;
+    if (!modalEl) return;
+
+    const resetModalViewport = () => {
+      modalBodyRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+      window.setTimeout(() => {
+        modalBodyRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+        firstInputRef.current?.focus({ preventScroll: true });
+      }, 30);
+    };
+
+    modalEl.addEventListener('shown.bs.modal', resetModalViewport);
+    modalEl.addEventListener('hidden.bs.modal', resetModalViewport);
+
+    return () => {
+      modalEl.removeEventListener('shown.bs.modal', resetModalViewport);
+      modalEl.removeEventListener('hidden.bs.modal', resetModalViewport);
+    };
+  }, []);
 
   const pages = useMemo(() => buildPages(filters.page, data?.meta.totalPages ?? 1), [filters.page, data?.meta.totalPages]);
 
@@ -593,19 +616,19 @@ export default function ClientesPage() {
 
       {/* Modal crear/editar cliente */}
       <div id="clientesFormModal" className="modal fade" ref={modalRef} tabIndex={-1} aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-        <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div className="modal-dialog modal-xl modal-dialog-scrollable">
           <form onSubmit={onSubmit} noValidate>
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title"><i className={`bi ${mode === 'create' ? 'bi-person-plus-fill' : 'bi-pencil-square'} me-2 text-primary`} />{mode === 'create' ? 'Nuevo cliente' : 'Editar cliente'}</h5>
                 <button type="button" className="btn-close" aria-label="Cerrar" onClick={closeModal} />
               </div>
-              <div className="modal-body">
+              <div className="modal-body" ref={modalBodyRef}>
                 {formErr && <div className="alert alert-danger small py-2 mb-3 d-flex align-items-start gap-2" role="alert"><i className="bi bi-exclamation-circle mt-1" /><div>{formErr}</div></div>}
                 <div className="row g-2">
                   <div className="col-md-6">
                     <label className="form-label small fw-semibold">Nombres *</label>
-                    <input className="form-control" value={form.nombres} onChange={(e) => setForm((f) => ({ ...f, nombres: e.target.value }))} required maxLength={100} />
+                    <input ref={firstInputRef} className="form-control" value={form.nombres} onChange={(e) => setForm((f) => ({ ...f, nombres: e.target.value }))} required maxLength={100} />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label small fw-semibold">Apellidos *</label>
