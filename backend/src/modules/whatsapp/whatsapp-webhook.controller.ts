@@ -4,7 +4,6 @@ import {
   HttpCode,
   Logger,
   Post,
-  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -29,18 +28,20 @@ export class WhatsappWebhookController {
 
   /** Verificación inicial del webhook por parte de Meta (hub.challenge). */
   @Get()
-  verificar(@Query() query: Record<string, string>, @Res() res: Response) {
-    const modo = query['hub.mode'];
-    const token = query['hub.verify_token'];
-    const challenge = query['hub.challenge'];
+  verificar(@Req() req: Request, @Res() res: Response) {
+    const parametros = new URL(req.url, 'http://localhost').searchParams;
+    const modo = parametros.get('hub.mode');
+    const token = parametros.get('hub.verify_token');
+    const challenge = parametros.get('hub.challenge');
     const esperado = this.config.get<string>('META_WEBHOOK_VERIFY_TOKEN') ?? '';
 
     if (modo === 'subscribe' && token && esperado && token === esperado) {
       this.logger.log('Webhook de WhatsApp verificado correctamente por Meta.');
       return res.status(200).send(challenge);
     }
-
-    this.logger.warn('Intento de verificación de webhook con token inválido.');
+    this.logger.warn(
+      `Verificación de webhook rechazada: modoSubscribe=${modo === 'subscribe'} tokenPresente=${Boolean(token)} tokenConfigurado=${Boolean(esperado)} coinciden=${Boolean(token && esperado && token === esperado)} challengePresente=${Boolean(challenge)}`,
+    );
     return res.status(403).send('Forbidden');
   }
 
