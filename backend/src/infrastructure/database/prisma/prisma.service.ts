@@ -182,8 +182,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   constructor(configService: ConfigService) {
     const databaseUrl = configService.get<string>('DATABASE_URL') ?? process.env.DATABASE_URL ?? '';
+    // El pooler de Supabase presenta un certificado firmado por su propia CA. Con las
+    // versiones recientes de `pg`, sslmode=require intenta validar la cadena completa y
+    // falla con "self-signed certificate in certificate chain". Se elimina ese parametro
+    // de la cadena y se fija explicitamente la conexion TLS sin validacion de CA.
+    const connectionString = databaseUrl
+      .replace(/([?&])sslmode=[^&]*&?/i, '$1')
+      .replace(/[?&]$/i, '');
     const pool = new Pool({
-      connectionString: databaseUrl,
+      connectionString,
+      ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 30000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
