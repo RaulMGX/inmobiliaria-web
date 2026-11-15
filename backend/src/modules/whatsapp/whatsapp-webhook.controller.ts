@@ -30,19 +30,29 @@ export class WhatsappWebhookController {
   @Get()
   verificar(@Req() req: Request, @Res() res: Response) {
     const parametros = new URL(req.url, 'http://localhost').searchParams;
-    const modo = parametros.get('hub.mode');
-    const token = parametros.get('hub.verify_token');
-    const challenge = parametros.get('hub.challenge');
-    const esperado = this.config.get<string>('META_WEBHOOK_VERIFY_TOKEN') ?? '';
+    // Se normaliza con trim() en ambos lados: al pegar el token en Render o en Meta
+    // es habitual arrastrar espacios o saltos de línea invisibles que rompen la comparación.
+    const modo = (parametros.get('hub.mode') ?? '').trim();
+    const recibido = (parametros.get('hub.verify_token') ?? '').trim();
+    const challenge = parametros.get('hub.challenge') ?? '';
+    const esperado = (this.config.get<string>('META_WEBHOOK_VERIFY_TOKEN') ?? '').trim();
 
-    if (modo === 'subscribe' && token && esperado && token === esperado) {
+    if (modo === 'subscribe' && recibido && esperado && recibido === esperado) {
       this.logger.log('Webhook de WhatsApp verificado correctamente por Meta.');
       return res.status(200).send(challenge);
     }
-    this.logger.warn(
-      `Verificación de webhook rechazada: modoSubscribe=${modo === 'subscribe'} tokenPresente=${Boolean(token)} tokenConfigurado=${Boolean(esperado)} coinciden=${Boolean(token && esperado && token === esperado)} challengePresente=${Boolean(challenge)}`,
-    );
-    return res.status(403).send('Forbidden');
+
+    const diagnostico = {
+      modoRecibido: modo || null,
+      tokenRecibidoVacio: recibido.length === 0,
+      tokenEsperadoVacio: esperado.length === 0,
+      longitudRecibida: recibido.length,
+      longitudEsperada: esperado.length,
+      coinciden: Boolean(recibido && esperado && recibido === esperado),
+      challengePresente: challenge.length > 0,
+    };
+    this.logger.warn(`Verificación de webhook rechazada: ${JSON.stringify(diagnostico)}`);
+    return res.status(403).json({ error: 'Forbidden', ...diagnostico });
   }
 
   /** Recepción de eventos (mensajes entrantes y actualizaciones de estado). */
