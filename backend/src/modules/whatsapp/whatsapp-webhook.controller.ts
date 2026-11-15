@@ -35,7 +35,10 @@ export class WhatsappWebhookController {
     const modo = (parametros.get('hub.mode') ?? '').trim();
     const recibido = (parametros.get('hub.verify_token') ?? '').trim();
     const challenge = parametros.get('hub.challenge') ?? '';
-    const esperado = (this.config.get<string>('META_WEBHOOK_VERIFY_TOKEN') ?? '').trim();
+    const claveToken = 'META_WEBHOOK_VERIFY_TOKEN';
+    const enProceso = (process.env[claveToken] ?? '').trim();
+    const enConfig = (this.config.get<string>(claveToken) ?? '').trim();
+    const esperado = enProceso || enConfig;
 
     if (modo === 'subscribe' && recibido && esperado && recibido === esperado) {
       this.logger.log('Webhook de WhatsApp verificado correctamente por Meta.');
@@ -50,6 +53,11 @@ export class WhatsappWebhookController {
       longitudEsperada: esperado.length,
       coinciden: Boolean(recibido && esperado && recibido === esperado),
       challengePresente: challenge.length > 0,
+      tokenEnProcessEnv: enProceso.length > 0,
+      tokenEnConfigService: enConfig.length > 0,
+      clavesMetaEnProceso: Object.keys(process.env)
+        .filter((clave) => clave.startsWith('META') || clave.startsWith('WHATSAPP'))
+        .sort(),
     };
     this.logger.warn(`Verificación de webhook rechazada: ${JSON.stringify(diagnostico)}`);
     return res.status(403).json({ error: 'Forbidden', ...diagnostico });
