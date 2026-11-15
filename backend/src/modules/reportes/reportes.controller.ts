@@ -76,4 +76,15 @@ export class ReportesController {
   rendimientoAsesores(@Param('empresaId') empresaId: string, @Query() q: ReporteQueryDto) {
     return this.reportesService.rendimientoAsesores(empresaId, q);
   }
+
+  @Get('whatsapp')
+  @ApiOperation({
+    summary:
+      'Reporte de WhatsApp/IA/campañas: prospectos por campaña y plataforma, conversaciones IA y transferidas, calificados, solicitudes y visitas, ventas por campaña, tiempos de respuesta y rendimiento por asesor',
+  })
+  @ApiParam({ name: 'empresaId', example: 'cm123empresa' })
+  @ApiOkResponse({ description: 'Reporte de WhatsApp, IA y campañas.' })
+  whatsapp(@Param('empresaId') empresaId: string, @Query() q: ReporteQueryDto) {
+    return this.reportesService.whatsapp(empresaId, q);
+  }
 }

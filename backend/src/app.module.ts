@@ -4,6 +4,7 @@ import configuration from './config/configuration';
 import { validateEnv } from './config/environment/env.validation';
 import { PrismaModule } from './infrastructure/database/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CampanasModule } from './modules/campanas/campanas.module';
 import { ClientesModule } from './modules/clientes/clientes.module';
 import { ComisionesModule } from './modules/comisiones/comisiones.module';
 import { ContratosModule } from './modules/contratos/contratos.module';
@@ -18,6 +19,8 @@ import { ReservasModule } from './modules/reservas/reservas.module';
 import { VentasModule } from './modules/ventas/ventas.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { VisitasModule } from './modules/visitas/visitas.module';
+import { IntegracionesModule } from './modules/integraciones/integraciones.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -32,8 +35,10 @@ import { HealthController } from './health.controller';
     }),
     AuthModule,
     PrismaModule,
+    IntegracionesModule,
     UsuariosModule,
     ClientesModule,
+    CampanasModule,
     ComisionesModule,
     ContratosModule,
     DashboardModule,
@@ -46,6 +51,7 @@ import { HealthController } from './health.controller';
     ReservasModule,
     VentasModule,
     VisitasModule,
+    WhatsappModule,
   ],
   controllers: [HealthController],
 })

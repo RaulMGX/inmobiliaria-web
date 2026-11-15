@@ -233,6 +233,11 @@ model Empresa {
   logo            String?   @db.VarChar(255)
   colorPrimario   String?   @db.VarChar(20) @map("color_primario")
   colorSecundario String?   @db.VarChar(20) @map("color_secundario")
+  /// Configuracion WhatsApp Cloud API
+  waPhoneNumberId String?   @unique @map("wa_phone_number_id") @db.VarChar(50)
+  waWabaId        String?   @map("wa_waba_id") @db.VarChar(50)
+  waNumero        String?   @map("wa_numero") @db.VarChar(30)
+  waActivo        Boolean   @default(false) @map("wa_activo")
   active          Boolean   @default(true)
   deletedAt       DateTime? @map("deleted_at")
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -251,6 +256,13 @@ model Empresa {
   notificaciones  Notificacion[]
   usuarios        Usuario[]
   visitas         VisitaPropiedad[]
+  campanas        Campana[]
+  conversacionesWhatsapp ConversacionWhatsapp[]
+  mensajesWhatsapp MensajeWhatsapp[]
+  asignacionesConversacion AsignacionConversacion[]
+  calificacionesProspecto CalificacionProspecto[]
+  solicitudesVisita SolicitudVisita[]
+  whatsappEventosProcesados WhatsappEventoProcesado[]
 
   @@index([active])
   @@index([deletedAt])
@@ -304,6 +316,11 @@ model Usuario {
   contratosGenerados Contrato[]
   comisionesRecibidas Comision[]
   notificacionesRecibidas Notificacion[]
+  conversacionesAsignadas ConversacionWhatsapp[]
+  asignacionesConversacion AsignacionConversacion[] @relation("AsignacionAsesor")
+  asignacionesRealizadas AsignacionConversacion[] @relation("AsignacionRealizadaPor")
+  solicitudesVisita SolicitudVisita[]
+  mensajesWhatsapp MensajeWhatsapp[]
 
   @@unique([empresaId, correo])
   @@index([empresaId])
@@ -333,6 +350,7 @@ model Proyecto {
   empresa      Empresa        @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   propiedades  Propiedad[]
   clientes     ClienteProyecto[]
+  solicitudesVisita SolicitudVisita[]
 
   @@unique([empresaId, nombre])
   @@index([empresaId])
@@ -372,6 +390,7 @@ model Propiedad {
   visitas        VisitaPropiedad[]
   documentos     Documento[]
   contratos      Contrato[]
+  solicitudesVisita SolicitudVisita[]
 
   @@index([proyectoId])
   @@index([estado])
@@ -408,6 +427,8 @@ model Cliente {
   bancoPreferencia         String?                  @map("banco_preferencia") @db.VarChar(150)
   preAprobacionDetalle     String?                  @map("pre_aprobacion_detalle") @db.VarChar(255)
   urgenciaCompra           UrgenciaCompraCliente?   @map("urgencia_compra")
+  consentimientoDatos      Boolean                  @default(false) @map("consentimiento_datos")
+  fechaConsentimiento      DateTime?                @map("fecha_consentimiento")
   estado              EstadoCliente          @default(NUEVO)
   observaciones       String?                @db.Text
   active              Boolean                @default(true)
@@ -415,7 +436,9 @@ model Cliente {
   createdAt           DateTime               @default(now()) @map("created_at")
   updatedAt           DateTime               @updatedAt @map("updated_at")
   empresaId           String                 @map("empresa_id")
+  campanaId           String?                @map("campana_id")
   empresa             Empresa                @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  campana             Campana?               @relation(fields: [campanaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   pipeline            PipelineComercial[]
   reservas            Reserva[]
   seguimientos        SeguimientoAgenda[]
@@ -424,6 +447,9 @@ model Cliente {
   documentos          Documento[]
   contratos           Contrato[]
   proyectos           ClienteProyecto[]
+  conversacionesWhatsapp ConversacionWhatsapp[]
+  calificacionesProspecto CalificacionProspecto[]
+  solicitudesVisita   SolicitudVisita[]
 
   @@unique([empresaId, tipoDocumento, numeroDocumento])
   @@index([empresaId])
@@ -542,12 +568,16 @@ model VisitaPropiedad {
   pipelineId       String?              @map("pipeline_id")
   seguimientoId    String?              @map("seguimiento_id")
   reprogramadaDeId String?              @map("reprogramada_de_id")
+  solicitudVisitaId String?             @unique @map("solicitud_visita_id")
+  conversacionId   String?              @map("conversacion_id")
   empresa          Empresa              @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cliente          Cliente              @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   asesor           Usuario              @relation(fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   propiedad        Propiedad            @relation(fields: [propiedadId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   pipeline         PipelineComercial?   @relation(fields: [pipelineId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   seguimiento      SeguimientoAgenda?   @relation(fields: [seguimientoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  solicitudVisita  SolicitudVisita?     @relation(fields: [solicitudVisitaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  conversacion     ConversacionWhatsapp? @relation(fields: [conversacionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   reservas         Reserva[]
   reprogramadaDe   VisitaPropiedad?     @relation("VisitaReprogramacion", fields: [reprogramadaDeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   reprogramaciones VisitaPropiedad[]    @relation("VisitaReprogramacion")
@@ -823,6 +853,9 @@ enum TipoNotificacion {
   VISITA_PROXIMA
   RESERVA_POR_VENCER
   TAREA_PENDIENTE
+  CONVERSACION_ASIGNADA
+  CONVERSACION_SIN_RESPUESTA
+  SOLICITUD_VISITA
 }
 
 model Notificacion {
@@ -855,4 +888,311 @@ model Notificacion {
   @@index([empresaId, asesorId, leida])
   @@index([empresaId, fechaNotificacion])
   @@map("notificaciones")
+}
+
+// =====================================================================
+// WhatsApp Cloud API + IA
+// =====================================================================
+
+enum PlataformaCampana {
+  FACEBOOK
+  INSTAGRAM
+}
+
+enum EstadoConversacionWhatsapp {
+  ATENCION_IA
+  PENDIENTE_ASESOR
+  ATENCION_HUMANA
+  CERRADA
+}
+
+enum ModoAtencionWhatsapp {
+  IA
+  HUMANA
+}
+
+enum DireccionMensaje {
+  ENTRANTE
+  SALIENTE
+}
+
+enum RemitenteMensaje {
+  CLIENTE
+  IA
+  ASESOR
+  SISTEMA
+}
+
+enum TipoMensajeWhatsapp {
+  TEXTO
+  IMAGEN
+  VIDEO
+  AUDIO
+  DOCUMENTO
+  UBICACION
+  STICKER
+  INTERACTIVO
+  SISTEMA
+}
+
+enum EstadoEnvioMensaje {
+  PENDIENTE
+  ENVIADO
+  ENTREGADO
+  LEIDO
+  FALLIDO
+}
+
+enum EstadoSolicitudVisita {
+  PENDIENTE
+  CONFIRMADA
+  RECHAZADA
+  CANCELADA
+  CONVERTIDA
+}
+
+enum EstadoAsignacionConversacion {
+  PENDIENTE
+  ATENDIDA
+  EXPIRADA
+  REASIGNADA
+}
+
+model Campana {
+  id            String            @id @default(cuid())
+  nombreCampana String            @map("nombre_campana") @db.VarChar(150)
+  plataforma    PlataformaCampana
+  campaignId    String?           @map("campaign_id") @db.VarChar(100)
+  adsetId       String?           @map("adset_id") @db.VarChar(100)
+  adId          String?           @map("ad_id") @db.VarChar(100)
+  proyectoIds   String[]          @default([]) @map("proyecto_ids")
+  propiedadIds  String[]          @default([]) @map("propiedad_ids")
+  fechaInicio   DateTime?         @map("fecha_inicio")
+  fechaFin      DateTime?         @map("fecha_fin")
+  observaciones String?           @db.Text
+  active        Boolean           @default(true)
+  deletedAt     DateTime?         @map("deleted_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  empresaId     String            @map("empresa_id")
+  empresa       Empresa           @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  clientes      Cliente[]
+  conversaciones ConversacionWhatsapp[]
+
+  @@index([empresaId])
+  @@index([plataforma])
+  @@index([campaignId])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, createdAt])
+  @@map("campanas")
+}
+
+model ConversacionWhatsapp {
+  id                  String                     @id @default(cuid())
+  waContactPhone      String                     @map("wa_contact_phone") @db.VarChar(30)
+  waContactName       String?                    @map("wa_contact_name") @db.VarChar(150)
+  estado              EstadoConversacionWhatsapp @default(ATENCION_IA)
+  modoAtencion        ModoAtencionWhatsapp       @default(IA) @map("modo_atencion")
+  iaActiva            Boolean                    @default(true) @map("ia_activa")
+  motivoTransferencia String?                    @map("motivo_transferencia") @db.VarChar(255)
+  resumenComercial    String?                    @map("resumen_comercial") @db.Text
+  referral            Json?                      @db.Json
+  ultimaActividad     DateTime                   @default(now()) @map("ultima_actividad")
+  fechaInicio         DateTime                   @default(now()) @map("fecha_inicio")
+  fechaTransferencia  DateTime?                  @map("fecha_transferencia")
+  fechaCierre         DateTime?                  @map("fecha_cierre")
+  active              Boolean                    @default(true)
+  deletedAt           DateTime?                  @map("deleted_at")
+  createdAt           DateTime                   @default(now()) @map("created_at")
+  updatedAt           DateTime                   @updatedAt @map("updated_at")
+  empresaId           String                     @map("empresa_id")
+  clienteId           String?                    @map("cliente_id")
+  asesorId            String?                    @map("asesor_id")
+  campanaId           String?                    @map("campana_id")
+  empresa             Empresa                    @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cliente             Cliente?                   @relation(fields: [clienteId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  asesor              Usuario?                   @relation(fields: [asesorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  campana             Campana?                   @relation(fields: [campanaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  mensajes            MensajeWhatsapp[]
+  asignaciones        AsignacionConversacion[]
+  calificacion        CalificacionProspecto?
+  solicitudesVisita   SolicitudVisita[]
+  visitas             VisitaPropiedad[]
+
+  @@unique([empresaId, waContactPhone])
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([asesorId])
+  @@index([campanaId])
+  @@index([estado])
+  @@index([ultimaActividad])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, estado])
+  @@index([empresaId, ultimaActividad])
+  @@map("conversaciones_whatsapp")
+}
+
+model MensajeWhatsapp {
+  id                 String              @id @default(cuid())
+  waMessageId        String?             @unique @map("wa_message_id") @db.VarChar(150)
+  direccion          DireccionMensaje
+  remitenteTipo      RemitenteMensaje    @map("remitente_tipo")
+  remitenteNombre    String?             @map("remitente_nombre") @db.VarChar(150)
+  contenido          String?             @db.Text
+  tipoMensaje        TipoMensajeWhatsapp @default(TEXTO) @map("tipo_mensaje")
+  mediaId            String?             @map("media_id") @db.VarChar(150)
+  mediaMimeType      String?             @map("media_mime_type") @db.VarChar(150)
+  mediaStoragePath   String?             @map("media_storage_path") @db.VarChar(500)
+  waStatus           EstadoEnvioMensaje  @default(PENDIENTE) @map("wa_status")
+  errorCode          String?             @map("error_code") @db.VarChar(50)
+  errorDetalle       String?             @map("error_detalle") @db.VarChar(500)
+  timestampMeta      DateTime?           @map("timestamp_meta")
+  active             Boolean             @default(true)
+  deletedAt          DateTime?           @map("deleted_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  empresaId          String              @map("empresa_id")
+  conversacionId     String              @map("conversacion_id")
+  remitenteUsuarioId String?             @map("remitente_usuario_id")
+  empresa            Empresa             @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  conversacion       ConversacionWhatsapp @relation(fields: [conversacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  remitenteUsuario   Usuario?            @relation(fields: [remitenteUsuarioId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([empresaId])
+  @@index([conversacionId])
+  @@index([remitenteUsuarioId])
+  @@index([direccion])
+  @@index([tipoMensaje])
+  @@index([waStatus])
+  @@index([createdAt])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, createdAt])
+  @@index([conversacionId, createdAt])
+  @@map("mensajes_whatsapp")
+}
+
+model AsignacionConversacion {
+  id                    String                        @id @default(cuid())
+  motivo                String?                       @db.VarChar(255)
+  resumenComercial      String?                       @map("resumen_comercial") @db.Text
+  fechaAsignacion       DateTime                      @default(now()) @map("fecha_asignacion")
+  fechaLimiteRespuesta  DateTime                      @map("fecha_limite_respuesta")
+  fechaPrimeraRespuesta DateTime?                     @map("fecha_primera_respuesta")
+  estado                EstadoAsignacionConversacion @default(PENDIENTE)
+  alertaEscalada        Boolean                       @default(false) @map("alerta_escalada")
+  active                Boolean                       @default(true)
+  deletedAt             DateTime?                     @map("deleted_at")
+  createdAt             DateTime                      @default(now()) @map("created_at")
+  updatedAt             DateTime                      @updatedAt @map("updated_at")
+  empresaId             String                        @map("empresa_id")
+  conversacionId        String                        @map("conversacion_id")
+  asesorId              String                        @map("asesor_id")
+  asignadoPorId         String?                       @map("asignado_por_id")
+  empresa               Empresa                       @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  conversacion          ConversacionWhatsapp          @relation(fields: [conversacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  asesor                Usuario                       @relation("AsignacionAsesor", fields: [asesorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  asignadoPor           Usuario?                      @relation("AsignacionRealizadaPor", fields: [asignadoPorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([empresaId])
+  @@index([conversacionId])
+  @@index([asesorId])
+  @@index([asignadoPorId])
+  @@index([estado])
+  @@index([fechaLimiteRespuesta])
+  @@index([alertaEscalada])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, estado])
+  @@index([estado, fechaLimiteRespuesta])
+  @@map("asignaciones_conversacion")
+}
+
+model CalificacionProspecto {
+  id                   String    @id @default(cuid())
+  nombresCompletos     String?   @map("nombres_completos") @db.VarChar(200)
+  tipoInmueble         String?   @map("tipo_inmueble") @db.VarChar(80)
+  ubicacionDeseada     String?   @map("ubicacion_deseada") @db.VarChar(200)
+  presupuesto          Decimal?  @db.Decimal(14, 2)
+  inicialDisponible    Decimal?  @map("inicial_disponible") @db.Decimal(14, 2)
+  alcanzaMinimo        Boolean   @default(false) @map("alcanza_minimo")
+  intencionCompra      String?   @map("intencion_compra") @db.VarChar(150)
+  interesVisita        Boolean   @default(false) @map("interes_visita")
+  dni                  String?   @db.VarChar(30)
+  consentimientoDatos  Boolean   @default(false) @map("consentimiento_datos")
+  fechaConsentimiento  DateTime? @map("fecha_consentimiento")
+  datosJson            Json?     @map("datos_json")
+  active               Boolean   @default(true)
+  deletedAt            DateTime? @map("deleted_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  empresaId            String    @map("empresa_id")
+  conversacionId       String    @unique @map("conversacion_id")
+  clienteId            String?   @map("cliente_id")
+  proyectoInteresId    String?   @map("proyecto_interes_id")
+  propiedadInteresId   String?   @map("propiedad_interes_id")
+  empresa              Empresa   @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  conversacion         ConversacionWhatsapp @relation(fields: [conversacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  cliente              Cliente?  @relation(fields: [clienteId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([alcanzaMinimo])
+  @@index([active])
+  @@index([deletedAt])
+  @@map("calificaciones_prospectos")
+}
+
+model SolicitudVisita {
+  id                 String                @id @default(cuid())
+  fechaSolicitada    DateTime?             @map("fecha_solicitada")
+  preferenciaHorario String?               @map("preferencia_horario") @db.VarChar(150)
+  estado             EstadoSolicitudVisita @default(PENDIENTE)
+  observaciones      String?               @db.Text
+  active             Boolean               @default(true)
+  deletedAt          DateTime?             @map("deleted_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  empresaId          String                @map("empresa_id")
+  conversacionId     String?               @map("conversacion_id")
+  clienteId          String?               @map("cliente_id")
+  propiedadId        String?               @map("propiedad_id")
+  proyectoId         String?               @map("proyecto_id")
+  asesorId           String?               @map("asesor_id")
+  empresa            Empresa               @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  conversacion       ConversacionWhatsapp? @relation(fields: [conversacionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  cliente            Cliente?              @relation(fields: [clienteId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  propiedad          Propiedad?            @relation(fields: [propiedadId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  proyecto           Proyecto?             @relation(fields: [proyectoId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  asesor             Usuario?              @relation(fields: [asesorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  visita             VisitaPropiedad?
+
+  @@index([empresaId])
+  @@index([conversacionId])
+  @@index([clienteId])
+  @@index([propiedadId])
+  @@index([proyectoId])
+  @@index([asesorId])
+  @@index([estado])
+  @@index([active])
+  @@index([deletedAt])
+  @@index([empresaId, estado])
+  @@map("solicitudes_visita")
+}
+
+model WhatsappEventoProcesado {
+  id          String   @id @default(cuid())
+  eventoId    String   @unique @map("evento_id") @db.VarChar(150)
+  waMessageId String?  @map("wa_message_id") @db.VarChar(150)
+  tipo        String?  @db.VarChar(50)
+  createdAt   DateTime @default(now()) @map("created_at")
+  empresaId   String   @map("empresa_id")
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([empresaId])
+  @@index([waMessageId])
+  @@index([createdAt])
+  @@map("whatsapp_eventos_procesados")
 }

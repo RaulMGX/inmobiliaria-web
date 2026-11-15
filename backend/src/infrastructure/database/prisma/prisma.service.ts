@@ -26,6 +26,7 @@ const MODELOS_CON_ASESOR = new Set<string>([
   'seguimientoAgenda',
   'comision',
   'notificacion',
+  'asignacionConversacion',
 ]);
 
 const MODELOS_CON_EMPRESA = new Set<string>([
@@ -41,6 +42,13 @@ const MODELOS_CON_EMPRESA = new Set<string>([
   'pago',
   'comision',
   'notificacion',
+  'campana',
+  'conversacionWhatsapp',
+  'mensajeWhatsapp',
+  'asignacionConversacion',
+  'calificacionProspecto',
+  'solicitudVisita',
+  'whatsappEventoProcesado',
 ]);
 
 function setKeyIfMissing(obj: any, dotted: string, value: any) {
@@ -136,6 +144,8 @@ const MODEL_DELEGATES = [
   'cliente', 'propiedad', 'pipelineComercial', 'seguimientoAgenda',
   'visitaPropiedad', 'reserva', 'venta', 'pago', 'contratoPlantilla',
   'contrato', 'documento', 'comision', 'notificacion', 'clienteProyecto',
+  'campana', 'conversacionWhatsapp', 'mensajeWhatsapp', 'asignacionConversacion',
+  'calificacionProspecto', 'solicitudVisita', 'whatsappEventoProcesado',
 ];
 
 @Injectable()
@@ -162,6 +172,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   declare readonly usuario: PrismaExtended['usuario'];
   declare readonly proyecto: PrismaExtended['proyecto'];
   declare readonly etapaPipeline: PrismaExtended['etapaPipeline'];
+  declare readonly campana: PrismaExtended['campana'];
+  declare readonly conversacionWhatsapp: PrismaExtended['conversacionWhatsapp'];
+  declare readonly mensajeWhatsapp: PrismaExtended['mensajeWhatsapp'];
+  declare readonly asignacionConversacion: PrismaExtended['asignacionConversacion'];
+  declare readonly calificacionProspecto: PrismaExtended['calificacionProspecto'];
+  declare readonly solicitudVisita: PrismaExtended['solicitudVisita'];
+  declare readonly whatsappEventoProcesado: PrismaExtended['whatsappEventoProcesado'];
 
   constructor(configService: ConfigService) {
     const databaseUrl = configService.get<string>('DATABASE_URL') ?? process.env.DATABASE_URL ?? '';

@@ -39,6 +39,74 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   DATABASE_URL!: string;
+
+  // --- WhatsApp Cloud API (Meta) ---
+  @IsString()
+  @IsOptional()
+  WHATSAPP_ACCESS_TOKEN?: string;
+
+  @IsString()
+  @IsOptional()
+  WHATSAPP_PHONE_NUMBER_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  WHATSAPP_BUSINESS_ACCOUNT_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  META_APP_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  META_APP_SECRET?: string;
+
+  @IsString()
+  @IsOptional()
+  META_WEBHOOK_VERIFY_TOKEN?: string;
+
+  @IsString()
+  @IsOptional()
+  META_GRAPH_API_VERSION?: string;
+
+  @IsString()
+  @IsOptional()
+  META_PAGE_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  INSTAGRAM_ACCOUNT_ID?: string;
+
+  // --- Inteligencia Artificial (Groq) ---
+  @IsString()
+  @IsOptional()
+  GROQ_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  GROQ_MODEL?: string;
+
+  @IsString()
+  @IsOptional()
+  GROQ_API_URL?: string;
+
+  // --- Supabase Storage ---
+  @IsString()
+  @IsOptional()
+  SUPABASE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  SUPABASE_STORAGE_BUCKET?: string;
+
+  // --- Cron interno / tareas programadas ---
+  @IsString()
+  @IsOptional()
+  INTERNAL_CRON_SECRET?: string;
 }
 
 export function validateEnv(

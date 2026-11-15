@@ -470,4 +470,163 @@ export class ReportesService {
       filas,
     };
   }
+
+  /**
+   * Reporte unificado de WhatsApp, IA y campañas (spec §10).
+   * Cubre: prospectos por campaña/plataforma, conversaciones IA/transferidas,
+   * prospectos calificados, solicitudes de visita, visitas generadas, ventas por
+   * campaña, tiempos promedio de respuesta (IA y humana), alertas escaladas y
+   * rendimiento de los asesores en la bandeja de WhatsApp.
+   *
+   * Nota: las métricas agrupadas por clave foránea usan SQL crudo parametrizado
+   * (bug conocido de Prisma 7.9.1 con groupBy sobre claves escalares). El aislamiento
+   * multiempresa se aplica manualmente con `empresa_id = $1`.
+   */
+  async whatsapp(empresaId: string, q: ReporteQueryDto) {
+    const { from, to } = parseRange(q);
+    const base = { empresaId, active: true, deletedAt: null as null };
+    const rango = { gte: from, lte: to };
+
+    const [
+      totalConversaciones,
+      activas,
+      transferidas,
+      porEstadoRows,
+      porModoRows,
+      prospectosWhatsapp,
+      porMedioRows,
+      calificados,
+      alcanzaMinimo,
+      conConsentimiento,
+      solicitudesTotal,
+      solicitudesPorEstadoRows,
+      visitasDesdeWhatsapp,
+      alertasEscaladas,
+      asignacionesPendientes,
+      prospectosPorCampana,
+      prospectosPorPlataforma,
+      ventasPorCampana,
+      respuestaIA,
+      respuestaHumana,
+      rendimientoWhatsapp,
+    ] = await Promise.all([
+      this.prisma.conversacionWhatsapp.count({ where: { ...base, createdAt: rango } }),
+      this.prisma.conversacionWhatsapp.count({ where: { ...base, createdAt: rango, estado: { not: 'CERRADA' } } }),
+      this.prisma.conversacionWhatsapp.count({ where: { ...base, createdAt: rango, fechaTransferencia: { not: null } } }),
+      this.prisma.conversacionWhatsapp.groupBy({ by: ['estado'], where: { ...base, createdAt: rango }, _count: { _all: true } }),
+      this.prisma.conversacionWhatsapp.groupBy({ by: ['modoAtencion'], where: { ...base, createdAt: rango }, _count: { _all: true } }),
+      this.prisma.cliente.count({ where: { ...base, createdAt: rango, medioCaptacion: 'WHATSAPP' } }),
+      this.prisma.cliente.groupBy({ by: ['medioCaptacion'], where: { ...base, createdAt: rango }, _count: { _all: true } }),
+      this.prisma.calificacionProspecto.count({ where: { ...base, createdAt: rango } }),
+      this.prisma.calificacionProspecto.count({ where: { ...base, createdAt: rango, alcanzaMinimo: true } }),
+      this.prisma.calificacionProspecto.count({ where: { ...base, createdAt: rango, consentimientoDatos: true } }),
+      this.prisma.solicitudVisita.count({ where: { ...base, createdAt: rango } }),
+      this.prisma.solicitudVisita.groupBy({ by: ['estado'], where: { ...base, createdAt: rango }, _count: { _all: true } }),
+      this.prisma.visitaPropiedad.count({ where: { ...base, fechaHora: rango, solicitudVisitaId: { not: null } } }),
+      this.prisma.asignacionConversacion.count({ where: { ...base, alertaEscalada: true, fechaAsignacion: rango } }),
+      this.prisma.asignacionConversacion.count({ where: { ...base, estado: 'PENDIENTE' } }),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT c.nombre_campana AS "campana", c.plataforma::text AS "plataforma", COUNT(*)::int AS "total"
+           FROM conversaciones_whatsapp cv
+           JOIN campanas c ON c.id = cv.campana_id
+          WHERE cv.empresa_id = $1 AND cv.created_at >= $2 AND cv.created_at <= $3
+            AND cv.active = true AND cv.deleted_at IS NULL
+          GROUP BY c.nombre_campana, c.plataforma
+          ORDER BY "total" DESC`,
+        empresaId, from, to,
+      ),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT c.plataforma::text AS "plataforma", COUNT(*)::int AS "total"
+           FROM conversaciones_whatsapp cv
+           JOIN campanas c ON c.id = cv.campana_id
+          WHERE cv.empresa_id = $1 AND cv.created_at >= $2 AND cv.created_at <= $3
+            AND cv.active = true AND cv.deleted_at IS NULL
+          GROUP BY c.plataforma
+          ORDER BY "total" DESC`,
+        empresaId, from, to,
+      ),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT c.nombre_campana AS "campana", c.plataforma::text AS "plataforma",
+                COUNT(v.id)::int AS "cantidad", COALESCE(SUM(v.total_venta), 0)::text AS "monto"
+           FROM ventas v
+           JOIN clientes cl ON cl.id = v.cliente_id
+           JOIN campanas c ON c.id = cl.campana_id
+          WHERE v.empresa_id = $1 AND v.fecha_venta >= $2 AND v.fecha_venta <= $3
+            AND v.active = true AND v.deleted_at IS NULL
+          GROUP BY c.nombre_campana, c.plataforma
+          ORDER BY "cantidad" DESC`,
+        empresaId, from, to,
+      ),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (m.created_at - prev.created_at)) / 60.0), 0)::float AS "minutos"
+           FROM mensajes_whatsapp m
+           JOIN LATERAL (
+             SELECT p.created_at FROM mensajes_whatsapp p
+              WHERE p.conversacion_id = m.conversacion_id
+                AND p.direccion = 'ENTRANTE' AND p.created_at < m.created_at
+              ORDER BY p.created_at DESC LIMIT 1
+           ) prev ON true
+          WHERE m.empresa_id = $1 AND m.remitente_tipo = 'IA'
+            AND m.created_at >= $2 AND m.created_at <= $3
+            AND m.active = true AND m.deleted_at IS NULL`,
+        empresaId, from, to,
+      ),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (fecha_primera_respuesta - fecha_asignacion)) / 60.0), 0)::float AS "minutos"
+           FROM asignaciones_conversacion
+          WHERE empresa_id = $1 AND fecha_asignacion >= $2 AND fecha_asignacion <= $3
+            AND fecha_primera_respuesta IS NOT NULL AND active = true AND deleted_at IS NULL`,
+        empresaId, from, to,
+      ),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT u.id AS "asesorId", u.nombres AS "nombres", u.apellidos AS "apellidos",
+                COUNT(ac.id)::int AS "asignaciones",
+                COUNT(CASE WHEN ac.estado = 'ATENDIDA' THEN 1 END)::int AS "atendidas",
+                COUNT(CASE WHEN ac.estado = 'EXPIRADA' THEN 1 END)::int AS "expiradas",
+                COUNT(CASE WHEN ac.alerta_escalada THEN 1 END)::int AS "alertasEscaladas",
+                ROUND(COALESCE(AVG(EXTRACT(EPOCH FROM (ac.fecha_primera_respuesta - ac.fecha_asignacion)) / 60.0), 0)::numeric, 1)::float AS "minutosPromedioRespuesta"
+           FROM asignaciones_conversacion ac
+           JOIN usuarios u ON u.id = ac.asesor_id
+          WHERE ac.empresa_id = $1 AND ac.fecha_asignacion >= $2 AND ac.fecha_asignacion <= $3
+            AND ac.active = true AND ac.deleted_at IS NULL
+          GROUP BY u.id, u.nombres, u.apellidos
+          ORDER BY "asignaciones" DESC`,
+        empresaId, from, to,
+      ),
+    ]);
+
+    const minutosIA = Number(respuestaIA[0]?.minutos ?? 0);
+    const minutosHumana = Number(respuestaHumana[0]?.minutos ?? 0);
+    const solicitudesPorEstado = groupByField(solicitudesPorEstadoRows as any, 'estado');
+
+    return {
+      filtros: { from: from.toISOString(), to: to.toISOString() },
+      resumen: {
+        totalConversaciones,
+        conversacionesActivas: activas,
+        conversacionesAtendidasPorIa: totalConversaciones - transferidas,
+        conversacionesTransferidas: transferidas,
+        conversacionesIaActiva: (groupByField(porModoRows as any, 'modoAtencion')['IA'] ?? 0),
+        conversacionesHumana: (groupByField(porModoRows as any, 'modoAtencion')['HUMANA'] ?? 0),
+        porEstado: groupByField(porEstadoRows as any, 'estado'),
+        prospectosWhatsapp,
+        prospectosPorMedioCaptacion: groupByField(porMedioRows as any, 'medioCaptacion'),
+        prospectosCalificados: calificados,
+        prospectosAlcanzanMinimo: alcanzaMinimo,
+        prospectosConConsentimiento: conConsentimiento,
+        solicitudesVisita: solicitudesTotal,
+        solicitudesVisitaPorEstado: solicitudesPorEstado,
+        visitasGeneradasDesdeWhatsapp: visitasDesdeWhatsapp,
+        alertasEscaladas,
+        asignacionesPendientes,
+        tiempoPromedioRespuestaIaMinutos: Math.round(minutosIA * 10) / 10,
+        tiempoPromedioRespuestaHumanaMinutos: Math.round(minutosHumana * 10) / 10,
+      },
+      prospectosPorCampana,
+      prospectosPorPlataforma,
+      ventasPorCampana,
+      rendimientoWhatsappPorAsesor: rendimientoWhatsapp,
+      filas: rendimientoWhatsapp,
+    };
+  }
 }
