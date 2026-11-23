@@ -94,6 +94,7 @@ export class GroqService {
     mensajeActual: string;
     historial: { autor: 'CLIENTE' | 'ASESOR' | 'IA'; contenido: string }[];
     activos?: { proyectos: string[]; propiedades: string[] };
+    campanaNombre?: string | null;
   }): Promise<AnalisisProspecto> {
     const system = [
       `Eres un asistente comercial de la inmobiliaria "${input.empresaNombre}" en Perú.`,
@@ -167,8 +168,12 @@ export class GroqService {
         }.`
       : '';
 
+    const campana = input.campanaNombre
+      ? `El cliente llegó por la campaña publicitaria "${input.campanaNombre}". Úsala solo como contexto comercial para adaptar tu tono; no menciones que proviene de una campaña.`
+      : '';
+
     const mensajes: MensajeChatIa[] = [
-      { role: 'system', content: `${system}\n\n${activos}`.trim() },
+      { role: 'system', content: `${system}\n\n${activos}\n\n${campana}`.trim() },
       ...input.historial.map((h) => ({
         role: h.autor === 'CLIENTE' ? ('user' as const) : ('assistant' as const),
         content: h.contenido,

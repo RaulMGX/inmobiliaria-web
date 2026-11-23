@@ -265,7 +265,17 @@ export class WhatsappService {
       return;
     }
 
-    await this.responderConIa(empresa, conversacion, telefono, contenido);
+    // Nombre de campaña: el del referral actual o el ya asociado a la conversación.
+    let campanaNombre = campana?.nombreCampana ?? null;
+    if (!campanaNombre && conversacion.campanaId) {
+      const c = await this.prisma.campana.findFirst({
+        where: { id: conversacion.campanaId },
+        select: { nombreCampana: true },
+      });
+      campanaNombre = c?.nombreCampana ?? null;
+    }
+
+    await this.responderConIa(empresa, conversacion, telefono, contenido, campanaNombre);
   }
 
   private async guardarMediaEntrante(
@@ -298,7 +308,7 @@ export class WhatsappService {
     if (!adId) return null;
     return this.prisma.campana.findFirst({
       where: { adId: String(adId), active: true, deletedAt: null },
-      select: { id: true },
+      select: { id: true, nombreCampana: true },
     });
   }
 
@@ -448,6 +458,7 @@ export class WhatsappService {
     conversacion: any,
     telefono: string,
     mensajeActual: string | null,
+    campanaNombre: string | null = null,
   ) {
     const [historial, activos] = await Promise.all([
       this.obtenerHistorial(conversacion.id),
@@ -461,6 +472,7 @@ export class WhatsappService {
         mensajeActual: mensajeActual?.trim() || '[El cliente envió un archivo multimedia sin texto]',
         historial: historial.slice(0, -1),
         activos,
+        campanaNombre,
       });
     } catch (e: any) {
       this.logger.error(`Groq no pudo analizar la conversación ${conversacion.id}: ${e?.message ?? e}`);
@@ -579,21 +591,68 @@ export class WhatsappService {
   // Asignación y escalamiento
   // ===================================================================
 
+  /**
+   * Minutos transcurridos desde medianoche en la zona horaria de Perú (UTC-5,
+   * sin horario de verano). Se usa para evaluar los turnos de los asesores.
+   */
+  private minutosActualesLima(): number {
+    const lima = new Date(Date.now() - 5 * 60 * 60 * 1000);
+    return lima.getUTCHours() * 60 + lima.getUTCMinutes();
+  }
+
+  /** Convierte "HH:MM" a minutos desde medianoche. Devuelve null si el formato es inválido. */
+  private parseHoraMinutos(valor: string | null | undefined): number | null {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(valor ?? '').trim());
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
+  }
+
+  /**
+   * Determina si un asesor está disponible según su turno.
+   * Sin horario configurado se considera disponible siempre.
+   * Soporta turnos que cruzan la medianoche (ej. 22:00 - 06:00).
+   */
+  private estaEnTurno(
+    asesor: { horaInicioTurno: string | null; horaFinTurno: string | null },
+    ahoraMin: number,
+  ): boolean {
+    const inicio = this.parseHoraMinutos(asesor.horaInicioTurno);
+    const fin = this.parseHoraMinutos(asesor.horaFinTurno);
+    if (inicio === null || fin === null) return true;
+    if (inicio === fin) return true;
+    if (inicio < fin) return ahoraMin >= inicio && ahoraMin < fin;
+    return ahoraMin >= inicio || ahoraMin < fin;
+  }
+
+  /**
+   * Elige un asesor priorizando a los que están en turno y, entre ellos, al de
+   * menor carga de conversaciones pendientes. Si nadie está en turno, usa a
+   * todos los asesores como respaldo.
+   */
   private async elegirAsesorConMenorCarga(): Promise<string | null> {
     const asesores: any[] = await this.prisma.usuario.findMany({
       where: { active: true, deletedAt: null, rol: { nombre: 'ASESOR' } },
-      select: { id: true },
+      select: { id: true, horaInicioTurno: true, horaFinTurno: true },
     });
     if (!asesores.length) return null;
 
-    let mejor: { id: string; carga: number } | null = null;
+    const ahoraMin = this.minutosActualesLima();
+    const enTurno: { id: string; carga: number }[] = [];
+    const respaldo: { id: string; carga: number }[] = [];
+
     for (const a of asesores) {
       const carga = await this.prisma.asignacionConversacion.count({
         where: { asesorId: a.id, estado: 'PENDIENTE', active: true, deletedAt: null },
       });
-      if (!mejor || carga < mejor.carga) mejor = { id: a.id, carga };
+      (this.estaEnTurno(a, ahoraMin) ? enTurno : respaldo).push({ id: a.id, carga });
     }
-    return mejor?.id ?? null;
+
+    const candidatos = enTurno.length ? enTurno : respaldo;
+    candidatos.sort((a, b) => a.carga - b.carga);
+    return candidatos[0]?.id ?? null;
   }
 
   async transferirAAsesor(
@@ -603,7 +662,10 @@ export class WhatsappService {
     resumen: string | null,
     asesorIdPreferido?: string | null,
   ) {
-    const asesorId = asesorIdPreferido ?? (await this.elegirAsesorConMenorCarga());
+    // Regla: si la conversación ya tenía asesor, se conserva (cliente que regresa),
+    // aunque no esté en turno. Solo se elige nuevo asesor para conversaciones nuevas.
+    const asesorId =
+      asesorIdPreferido ?? conversacion.asesorId ?? (await this.elegirAsesorConMenorCarga());
     if (!asesorId) {
       this.logger.warn(`No hay asesores disponibles en la empresa ${empresa.id} para asignar la conversación.`);
       return null;

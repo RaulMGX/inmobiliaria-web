@@ -24,6 +24,7 @@ interface Conversacion {
   resumenComercial: string | null;
   cliente: { id: string; nombres: string; apellidos: string; celular: string } | null;
   asesor: { id: string; nombres: string; apellidos: string } | null;
+  campana: { id: string; nombreCampana: string; plataforma: string } | null;
   asignaciones: { id: string; estado: string; fechaLimiteRespuesta: string | null; alertaEscalada: boolean }[];
   _count: { mensajes: number };
 }
@@ -231,6 +232,11 @@ export default function WhatsAppPage() {
                       <i className="bi bi-telephone me-1" />{c.waContactPhone}
                       {c.asesor && <span className="ms-2">· {c.asesor.nombres}</span>}
                     </div>
+                    {c.campana && (
+                      <div className="wa-item-campana">
+                        <i className="bi bi-megaphone-fill me-1" />{c.campana.nombreCampana}
+                      </div>
+                    )}
                     <div className="wa-item-preview">
                       {c.resumenComercial || `${c._count.mensajes} mensaje(s) · ${formatDateTime(c.ultimaActividad)}`}
                     </div>
@@ -267,6 +273,11 @@ export default function WhatsAppPage() {
                         <span className="ms-2">· {detalle.cliente.nombres} {detalle.cliente.apellidos}</span>
                       )}
                     </div>
+                    {detalle.campana && (
+                      <div className="wa-campana-badge">
+                        <i className="bi bi-megaphone-fill" />{detalle.campana.nombreCampana}
+                      </div>
+                    )}
                   </div>
                   <div className="d-flex align-items-center gap-2 flex-shrink-0">
                     <span className={`wa-badge ${ESTADO_BADGE[detalle.estado].cls}`}>

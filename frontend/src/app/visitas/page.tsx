@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/components/AppLayout';
 import VisitaModal from '@/components/VisitaModal';
 import { formatDate, formatDateTime, getSession, http, initials } from '@/lib/api';
+import { buildExcelFileName, compactParams, exportEndpointToExcel } from '@/lib/excel-export';
 import {
   AsesorLight,
   ClienteLight,
@@ -51,6 +52,7 @@ export default function VisitasPage() {
   const [data, setData] = useState<Paginated<Visita> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [clientes, setClientes] = useState<ClienteLight[]>([]);
   const [asesores, setAsesores] = useState<AsesorLight[]>(yoAsesor ? [yoAsesor] : []);
   const [propiedades, setPropiedades] = useState<PropiedadLight[]>([]);
@@ -195,6 +197,41 @@ export default function VisitasPage() {
     }
   }
 
+  async function onExport() {
+    if (!empresaId) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const exportFilters = compactParams({
+        search: filters.search,
+        estado: filters.estado,
+        clienteId: filters.clienteId,
+        propiedadId: filters.propiedadId,
+        asesorId: filters.asesorId,
+        sortBy: filters.sortBy,
+        sortDirection: filters.sortDirection,
+      });
+      await exportEndpointToExcel<Visita>({
+        url: `/empresas/${empresaId}/visitas`,
+        params: exportFilters,
+        fileName: buildExcelFileName('visitas'),
+        sheetName: 'Visitas',
+        audit: {
+          modulo: 'Visitas',
+          empresaId,
+          usuario: `${sess?.usuario.nombres ?? ''} ${sess?.usuario.apellidos ?? ''}`.trim() || sess?.usuario.correo,
+          filtros: exportFilters,
+          observaciones: 'Exportacion completa de visitas para seguimiento y auditoria.',
+        },
+      });
+    } catch (e) {
+      const err = e as AxiosError<any>;
+      setError(err.response?.data?.message ?? 'No se pudo exportar las visitas a Excel.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const meta = data?.meta;
   const pages = useMemo(() => buildPages(meta?.page ?? 1, meta?.totalPages ?? 1), [meta]);
 
@@ -209,6 +246,10 @@ export default function VisitasPage() {
           <div className="text-muted small align-self-center">
             Mostrando {meta ? `${(meta.page - 1) * meta.limit + 1}-${Math.min(meta.page * meta.limit, meta.total)} de ${meta.total}` : '0'}
           </div>
+          <button className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-2" onClick={onExport} disabled={exporting || loading}>
+            {exporting ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-file-earmark-excel" />}
+            Exportar Excel
+          </button>
           <button className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onClick={handleRefreshRefs} title="Volver a cargar clientes/asesores/propiedades">
             <i className="bi bi-arrow-clockwise" /> Recargar listas
           </button>

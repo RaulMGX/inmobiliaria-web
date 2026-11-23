@@ -22,6 +22,8 @@ interface UsuarioLight {
   correo: string;
   telefono?: string | null;
   avatar?: string | null;
+  horaInicioTurno?: string | null;
+  horaFinTurno?: string | null;
   active: boolean;
   lastLogin?: string | null;
   createdAt?: string;
@@ -50,6 +52,8 @@ interface CreateUsuarioInput {
   telefono: string;
   rolNombre: RolNombre;
   password: string;
+  horaInicioTurno: string;
+  horaFinTurno: string;
   active: boolean;
 }
 
@@ -59,6 +63,8 @@ interface UpdateUsuarioInput {
   correo: string;
   telefono: string;
   rolNombre: RolNombre;
+  horaInicioTurno: string;
+  horaFinTurno: string;
   active: boolean;
 }
 
@@ -86,6 +92,8 @@ function emptyCreate(): CreateUsuarioInput {
     telefono: '',
     rolNombre: 'ASESOR',
     password: '',
+    horaInicioTurno: '',
+    horaFinTurno: '',
     active: true,
   };
 }
@@ -221,6 +229,8 @@ export default function UsuariosPage() {
       telefono: u.telefono || '',
       rolNombre: u.rol.nombre,
       password: '',
+      horaInicioTurno: u.horaInicioTurno || '',
+      horaFinTurno: u.horaFinTurno || '',
       active: u.active,
     });
     showModal(modalRef);
@@ -249,6 +259,10 @@ export default function UsuariosPage() {
     if (!form.correo.trim()) e.correo = 'Correo requerido.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) e.correo = 'Correo inválido.';
     if (form.telefono && form.telefono.length > 30) e.telefono = 'Máximo 30 caracteres.';
+    const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (form.horaInicioTurno && !HORA.test(form.horaInicioTurno)) e.horaInicioTurno = 'Hora inválida.';
+    if (form.horaFinTurno && !HORA.test(form.horaFinTurno)) e.horaFinTurno = 'Hora inválida.';
+    if (!!form.horaInicioTurno !== !!form.horaFinTurno) e.horaInicioTurno = 'Define hora de inicio y fin del turno.';
     if (!form.rolNombre) e.rolNombre = 'Selecciona un rol.';
     if (mode === 'create') {
       if (!form.password) e.password = 'Contraseña requerida.';
@@ -280,6 +294,10 @@ export default function UsuariosPage() {
           active: form.active,
         };
         if (tel) payload.telefono = tel;
+        if (form.horaInicioTurno && form.horaFinTurno) {
+          payload.horaInicioTurno = form.horaInicioTurno;
+          payload.horaFinTurno = form.horaFinTurno;
+        }
         await http.post(`/empresas/${sess.usuario.empresaId}/usuarios`, payload);
         setToast('Usuario creado correctamente.');
       } else if (mode === 'edit' && editing) {
@@ -293,6 +311,8 @@ export default function UsuariosPage() {
         };
         if (tel) payload.telefono = tel;
         else payload.telefono = null;
+        payload.horaInicioTurno = form.horaInicioTurno || null;
+        payload.horaFinTurno = form.horaFinTurno || null;
         await http.patch(`/empresas/${sess.usuario.empresaId}/usuarios/${editing.id}`, payload);
         setToast('Usuario actualizado correctamente.');
       }
@@ -566,6 +586,23 @@ export default function UsuariosPage() {
                       <input type="password" className={`form-control form-control-sm ${formErrors.password ? 'is-invalid' : ''}`} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Mín. 8 caracteres, mayúscula, número y símbolo" />
                       {formErrors.password && <div className="invalid-feedback small">{formErrors.password}</div>}
                     </div>
+                  )}
+                  {form.rolNombre === 'ASESOR' && (
+                    <>
+                      <div className="col-md-6">
+                        <label className="form-label small fw-semibold mb-1">Inicio de turno</label>
+                        <input type="time" className={`form-control form-control-sm ${formErrors.horaInicioTurno ? 'is-invalid' : ''}`} value={form.horaInicioTurno} onChange={(e) => setForm({ ...form, horaInicioTurno: e.target.value })} />
+                        {formErrors.horaInicioTurno && <div className="invalid-feedback small">{formErrors.horaInicioTurno}</div>}
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label small fw-semibold mb-1">Fin de turno</label>
+                        <input type="time" className={`form-control form-control-sm ${formErrors.horaFinTurno ? 'is-invalid' : ''}`} value={form.horaFinTurno} onChange={(e) => setForm({ ...form, horaFinTurno: e.target.value })} />
+                        {formErrors.horaFinTurno && <div className="invalid-feedback small">{formErrors.horaFinTurno}</div>}
+                      </div>
+                      <div className="col-12">
+                        <div className="form-text small">Turno del asesor para asignar conversaciones nuevas. Si lo dejas vacío, se considera disponible a toda hora.</div>
+                      </div>
+                    </>
                   )}
                   <div className="col-12 mt-1">
                     <label className="form-check small">

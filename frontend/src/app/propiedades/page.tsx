@@ -6,6 +6,7 @@ import AppLayout from '@/components/AppLayout';
 import PropiedadModal from '@/components/PropiedadModal';
 import { useBindBootstrapModal } from '@/lib/bootstrap-modal';
 import { formatDate, formatPEN, getSession, http, humanizeToken } from '@/lib/api';
+import { buildExcelFileName, compactParams, exportEndpointToExcel } from '@/lib/excel-export';
 import {
   ESTADO_BADGE,
   ESTADOS_PROPIEDAD,
@@ -38,6 +39,7 @@ export default function PropiedadesPage() {
   const [result, setResult] = useState<Paginated<Propiedad> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [confirm, setConfirm] = useState<{ show: boolean; id: string | null; msg: string; working: boolean }>({
     show: false, id: null, msg: '', working: false,
@@ -124,6 +126,42 @@ export default function PropiedadesPage() {
     }
   }
 
+  async function onExport() {
+    if (!empresaId) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const exportFilters = compactParams({
+        search: filters.search,
+        estado: filters.estado,
+        tipoPropiedad: filters.tipoPropiedad,
+        proyectoId: filters.proyectoId,
+        disponible: filters.disponible,
+        sortBy: filters.sortBy,
+        sortDirection: filters.sortDirection,
+      });
+      await exportEndpointToExcel<Propiedad>({
+        url: `/empresas/${empresaId}/propiedades`,
+        params: exportFilters,
+        fileName: buildExcelFileName('propiedades'),
+        sheetName: 'Propiedades',
+        audit: {
+          modulo: 'Propiedades',
+          empresaId,
+          usuario: `${sess?.usuario.nombres ?? ''} ${sess?.usuario.apellidos ?? ''}`.trim() || sess?.usuario.correo,
+          filtros: exportFilters,
+          observaciones: 'Exportacion completa de propiedades para respaldo y auditoria.',
+        },
+      });
+      setToast({ ok: true, msg: 'Excel de propiedades generado correctamente.' });
+    } catch (e) {
+      const err = e as AxiosError<any>;
+      setError(err.response?.data?.message ?? 'No se pudo exportar las propiedades a Excel.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const pages = useMemo(() => buildPagination(result?.meta.page || 1, result?.meta.totalPages || 1), [result]);
   const meta = result?.meta;
 
@@ -135,8 +173,9 @@ export default function PropiedadesPage() {
           <p className="page-subtitle">Gestiona el inventario de propiedades por empresa.</p>
         </div>
         <div className="d-flex gap-2">
-          <button className="btn btn-sm btn-outline-secondary">
-            <i className="bi bi-download me-1" /> Exportar
+          <button className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-2" onClick={onExport} disabled={exporting || loading}>
+            {exporting ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-file-earmark-excel" />}
+            Exportar Excel
           </button>
           <button
             className="btn btn-sm btn-primary d-flex align-items-center gap-2"

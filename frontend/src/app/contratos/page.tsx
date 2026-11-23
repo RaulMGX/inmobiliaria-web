@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/components/AppLayout';
 import ContratoModal from '@/components/ContratoModal';
 import { formatDate, formatDateTime, formatPEN, getSession, http, initials } from '@/lib/api';
+import { buildExcelFileName, compactParams, exportEndpointToExcel } from '@/lib/excel-export';
 import {
   ClienteLight,
   CONTRATO_BADGE,
@@ -45,6 +46,7 @@ export default function ContratosPage() {
   const [data, setData] = useState<Paginated<Contrato> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [clientes, setClientes] = useState<ClienteLight[]>([]);
   const [responsables, setResponsables] = useState<ResponsableLight[]>([]);
   const [propiedades, setPropiedades] = useState<PropiedadLight[]>([]);
@@ -154,6 +156,43 @@ export default function ContratosPage() {
     }
   }
 
+  async function onExport() {
+    if (!empresaId) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const exportFilters = compactParams({
+        search: filters.search,
+        estado: filters.estado,
+        tipo: filters.tipo,
+        ventaId: filters.ventaId,
+        clienteId: filters.clienteId,
+        propiedadId: filters.propiedadId,
+        responsableId: filters.responsableId,
+        sortBy: filters.sortBy,
+        sortDirection: filters.sortDirection,
+      });
+      await exportEndpointToExcel<Contrato>({
+        url: `/empresas/${empresaId}/contratos`,
+        params: exportFilters,
+        fileName: buildExcelFileName('contratos'),
+        sheetName: 'Contratos',
+        audit: {
+          modulo: 'Contratos',
+          empresaId,
+          usuario: `${sess?.usuario.nombres ?? ''} ${sess?.usuario.apellidos ?? ''}`.trim() || sess?.usuario.correo,
+          filtros: exportFilters,
+          observaciones: 'Exportacion completa de contratos para respaldo y auditoria.',
+        },
+      });
+    } catch (e) {
+      const err = e as AxiosError<any>;
+      setError(err.response?.data?.message ?? 'No se pudo exportar los contratos a Excel.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const meta = data?.meta;
   const pages = useMemo(() => buildPages(meta?.page ?? 1, meta?.totalPages ?? 1), [meta]);
   const stats = useMemo(() => {
@@ -176,6 +215,10 @@ export default function ContratosPage() {
         </div>
         <div className="d-flex gap-2">
           <div className="text-muted small align-self-center">Mostrando {meta ? `${(meta.page - 1) * meta.limit + 1}-${Math.min(meta.page * meta.limit, meta.total)} de ${meta.total}` : '0'}</div>
+          <button className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-2" onClick={onExport} disabled={exporting || loading}>
+            {exporting ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-file-earmark-excel" />}
+            Exportar Excel
+          </button>
           <button className="btn btn-sm btn-primary d-flex align-items-center gap-2" onClick={() => { setEditTarget(null); setModalMode('create'); setModalOpen(true); }}>
             <i className="bi bi-plus-lg" /> Nuevo contrato
           </button>

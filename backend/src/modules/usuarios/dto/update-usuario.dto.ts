@@ -5,6 +5,7 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -37,6 +38,16 @@ export class UpdateUsuarioDto {
   @IsOptional()
   @IsIn(['ADMIN', 'ASESOR'])
   rolNombre?: 'ADMIN' | 'ASESOR';
+
+  @ApiPropertyOptional({ example: '08:00', description: 'Hora de inicio de turno (HH:MM, 24h). Enviar null para borrar.' })
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Hora de inicio inválida (use HH:MM).' })
+  horaInicioTurno?: string | null;
+
+  @ApiPropertyOptional({ example: '14:00', description: 'Hora de fin de turno (HH:MM, 24h). Enviar null para borrar.' })
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Hora de fin inválida (use HH:MM).' })
+  horaFinTurno?: string | null;
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()

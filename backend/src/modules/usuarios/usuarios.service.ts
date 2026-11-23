@@ -21,6 +21,8 @@ const USUARIO_SELECT: Prisma.UsuarioSelect = {
   correo: true,
   telefono: true,
   avatar: true,
+  horaInicioTurno: true,
+  horaFinTurno: true,
   active: true,
   deletedAt: true,
   lastLogin: true,
@@ -105,6 +107,8 @@ export class UsuariosService {
         correo: dto.correo.trim().toLowerCase(),
         password: passwordHash,
         telefono: dto.telefono?.trim() || null,
+        horaInicioTurno: dto.horaInicioTurno?.trim() || null,
+        horaFinTurno: dto.horaFinTurno?.trim() || null,
         active: dto.active !== false,
         empresa: { connect: { id: empresaId } },
         rol: { connect: { id: rol.id } },
@@ -175,6 +179,12 @@ export class UsuariosService {
       ...(dto.correo !== undefined ? { correo: dto.correo.trim().toLowerCase() } : {}),
       ...(dto.telefono !== undefined
         ? { telefono: dto.telefono?.trim() || null }
+        : {}),
+      ...(dto.horaInicioTurno !== undefined
+        ? { horaInicioTurno: dto.horaInicioTurno?.trim() || null }
+        : {}),
+      ...(dto.horaFinTurno !== undefined
+        ? { horaFinTurno: dto.horaFinTurno?.trim() || null }
         : {}),
       ...(dto.active !== undefined ? { active: dto.active } : {}),
       ...(rolId ? { rol: { connect: { id: rolId } } } : {}),

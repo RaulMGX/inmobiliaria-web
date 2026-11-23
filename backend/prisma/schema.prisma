@@ -296,6 +296,8 @@ model Usuario {
   password   String    @db.VarChar(255)
   telefono   String?   @db.VarChar(30)
   avatar     String?   @db.VarChar(255)
+  horaInicioTurno String? @map("hora_inicio_turno") @db.VarChar(5)
+  horaFinTurno    String? @map("hora_fin_turno") @db.VarChar(5)
   active     Boolean   @default(true)
   deletedAt  DateTime? @map("deleted_at")
   lastLogin  DateTime? @map("last_login")

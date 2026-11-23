@@ -5,6 +5,7 @@ import { AxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/components/AppLayout';
 import { formatDate, getSession, http, initials } from '@/lib/api';
+import { buildExcelFileName, compactParams, exportEndpointToExcel } from '@/lib/excel-export';
 
 type MedioCaptacion = string;
 type EstadoCliente = string;
@@ -175,6 +176,7 @@ export default function ClientesPage() {
   const [data, setData] = useState<Paginated<ClienteLight> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [proyectos, setProyectos] = useState<ProyectoOption[]>([]);
 
   const debRef = useRef<number | undefined>(undefined);
@@ -412,6 +414,39 @@ export default function ClientesPage() {
     }
   }
 
+  async function onExport() {
+    if (!empresaId) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const exportFilters = compactParams({
+        search: filters.search,
+        estado: filters.estado,
+        sortBy: filters.sortBy,
+        sortDirection: filters.sortDirection,
+      });
+      await exportEndpointToExcel<ClienteLight>({
+        url: `/empresas/${empresaId}/clientes`,
+        params: exportFilters,
+        fileName: buildExcelFileName('clientes'),
+        sheetName: 'Clientes',
+        audit: {
+          modulo: 'Clientes',
+          empresaId,
+          usuario: `${sess?.usuario.nombres ?? ''} ${sess?.usuario.apellidos ?? ''}`.trim() || sess?.usuario.correo,
+          filtros: exportFilters,
+          observaciones: 'Exportacion completa de clientes para respaldo y auditoria.',
+        },
+      });
+      setToast({ ok: true, msg: 'Excel de clientes generado correctamente.' });
+    } catch (e) {
+      const err = e as AxiosError<any>;
+      setError(err.response?.data?.message ?? 'No se pudo exportar los clientes a Excel.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <AppLayout>
       <div className="mb-4 d-flex align-items-start justify-content-between flex-wrap gap-2">
@@ -419,13 +454,24 @@ export default function ClientesPage() {
           <h1 className="page-title">Clientes</h1>
           <p className="page-subtitle">Gestiona el portafolio de clientes, datos de contacto y seguimiento comercial.</p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
-          onClick={openCreate}
-        >
-          <i className="bi bi-person-plus-fill" /> Nuevo cliente
-        </button>
+        <div className="d-flex gap-2">
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
+            onClick={onExport}
+            disabled={exporting || loading}
+          >
+            {exporting ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-file-earmark-excel" />}
+            Exportar Excel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+            onClick={openCreate}
+          >
+            <i className="bi bi-person-plus-fill" /> Nuevo cliente
+          </button>
+        </div>
       </div>
 
       {error && <div className="alert alert-danger small mb-3 d-flex align-items-start gap-2 py-2" role="alert"><i className="bi bi-exclamation-triangle-fill mt-1" /><div>{error}</div></div>}
