@@ -29,6 +29,12 @@ const menu: MenuGroup[] = [
     ],
   },
   {
+    section: 'Marketing',
+    items: [
+      { label: 'Campañas', href: '/campanas', icon: 'bi-megaphone', roles: ['ADMIN'] },
+    ],
+  },
+  {
     section: 'Operaciones',
     items: [
       { label: 'Propiedades', href: '/propiedades', icon: 'bi-building', roles: ['ADMIN'] },
