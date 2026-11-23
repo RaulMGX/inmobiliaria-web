@@ -764,9 +764,18 @@ export class WhatsappService {
         : {}),
     };
 
-    // Un asesor solo ve sus conversaciones y las que están sin atender.
+    // Un asesor ve sus conversaciones y todas las que necesitan atención humana
+    // (PENDIENTE_ASESOR / ATENCION_HUMANA), aunque estén asignadas a otro asesor.
+    // Así cualquier asesor puede atender una conversación pendiente.
     if (user.rolNombre === 'ASESOR') {
-      where.AND = [{ OR: [{ asesorId: user.sub }, { asesorId: null }] }];
+      where.AND = [
+        {
+          OR: [
+            { asesorId: user.sub },
+            { estado: { in: ['PENDIENTE_ASESOR', 'ATENCION_HUMANA'] } },
+          ],
+        },
+      ];
     }
 
     const [data, total] = await this.prisma.$transaction([
@@ -801,7 +810,9 @@ export class WhatsappService {
         empresaId,
         active: true,
         deletedAt: null,
-        ...(user.rolNombre === 'ASESOR' ? { OR: [{ asesorId: user.sub }, { asesorId: null }] } : {}),
+        ...(user.rolNombre === 'ASESOR'
+          ? { OR: [{ asesorId: user.sub }, { estado: { in: ['PENDIENTE_ASESOR', 'ATENCION_HUMANA'] } }] }
+          : {}),
       },
       include: {
         cliente: { select: { id: true, nombres: true, apellidos: true, celular: true, correo: true } },
@@ -855,7 +866,9 @@ export class WhatsappService {
         empresaId,
         active: true,
         deletedAt: null,
-        ...(user.rolNombre === 'ASESOR' ? { OR: [{ asesorId: user.sub }, { asesorId: null }] } : {}),
+        ...(user.rolNombre === 'ASESOR'
+          ? { OR: [{ asesorId: user.sub }, { estado: { in: ['PENDIENTE_ASESOR', 'ATENCION_HUMANA'] } }] }
+          : {}),
       },
     });
     if (!conversacion) throw new NotFoundException('Conversación no encontrada.');
@@ -943,7 +956,9 @@ export class WhatsappService {
         empresaId,
         active: true,
         deletedAt: null,
-        ...(user.rolNombre === 'ASESOR' ? { OR: [{ asesorId: user.sub }, { asesorId: null }] } : {}),
+        ...(user.rolNombre === 'ASESOR'
+          ? { OR: [{ asesorId: user.sub }, { estado: { in: ['PENDIENTE_ASESOR', 'ATENCION_HUMANA'] } }] }
+          : {}),
       },
     });
     if (!conversacion) throw new NotFoundException('Conversación no encontrada.');
