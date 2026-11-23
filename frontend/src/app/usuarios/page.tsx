@@ -457,6 +457,7 @@ export default function UsuariosPage() {
                 <th>Usuario</th>
                 <th>Rol</th>
                 <th>Teléfono</th>
+                <th>Turno</th>
                 <th>Último login</th>
                 <th>Creado</th>
                 <th>Estado</th>
@@ -465,10 +466,10 @@ export default function UsuariosPage() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={7} className="text-center py-4 text-muted"><div className="spinner-border spinner-border-sm me-2" /> Cargando usuarios...</td></tr>
+                <tr><td colSpan={8} className="text-center py-4 text-muted"><div className="spinner-border spinner-border-sm me-2" /> Cargando usuarios...</td></tr>
               )}
               {!loading && (!data || data.data.length === 0) && (
-                <tr><td colSpan={7} className="text-center py-4 text-muted small">Sin usuarios para los filtros seleccionados.</td></tr>
+                <tr><td colSpan={8} className="text-center py-4 text-muted small">Sin usuarios para los filtros seleccionados.</td></tr>
               )}
               {!loading && data?.data.map((u) => {
                 const badge = rolBadge(u.rol.nombre);
@@ -488,6 +489,13 @@ export default function UsuariosPage() {
                     </td>
                     <td><span className={`badge ${badge.cls} fw-semibold`} style={{ fontSize: '.7rem' }}>{badge.label}</span></td>
                     <td className="small">{u.telefono || '—'}</td>
+                    <td className="small">
+                      {u.rol.nombre === 'ASESOR' && u.horaInicioTurno && u.horaFinTurno
+                        ? <span className="badge badge-soft-info fw-semibold" style={{ fontSize: '.7rem' }}>{u.horaInicioTurno} – {u.horaFinTurno}</span>
+                        : u.rol.nombre === 'ASESOR'
+                          ? <span className="text-muted" style={{ fontSize: '.72rem' }}>Sin turno (24/7)</span>
+                          : <span className="text-muted" style={{ fontSize: '.72rem' }}>—</span>}
+                    </td>
                     <td className="small">{u.lastLogin ? formatDate(u.lastLogin) : '—'}</td>
                     <td className="small">{formatDate(u.createdAt)}</td>
                     <td>{u.active
