@@ -23,6 +23,7 @@ const menu: MenuGroup[] = [
     section: 'Principal',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: 'bi-speedometer2' },
+      { label: 'WhatsApp', href: '/whatsapp', icon: 'bi-whatsapp' },
       { label: 'Clientes', href: '/clientes', icon: 'bi-people' },
       { label: 'Pipeline', href: '/pipeline', icon: 'bi-diagram-3' },
     ],
