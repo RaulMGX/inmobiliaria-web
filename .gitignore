@@ -11,3 +11,9 @@ backend/src/infrastructure/database/prisma/generated/
 backend/.env
 backend/.env.*
 !backend/.env.example
+
+# Scripts locales con credenciales de Supabase (no versionar)
+backend/scripts/check-columns.cjs
+backend/scripts/tmp-add-turno-columns.cjs
+backend/scripts/apply-whatsapp-schema.cjs
+backend/scripts/add-refresh-token.cjs
