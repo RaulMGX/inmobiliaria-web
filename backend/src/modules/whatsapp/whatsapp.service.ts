@@ -428,7 +428,7 @@ export class WhatsappService {
       ),
       propiedades: (propiedades as any[]).map((p) =>
         [
-          `${p.codigoInterno} - ${p.nombre}`,
+          `[Código interno: ${p.codigoInterno}] ${p.nombre}`,
           p.tipoPropiedad,
           p.proyecto?.nombre ? `Proyecto: ${p.proyecto.nombre}` : null,
           p.estado,

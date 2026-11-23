@@ -111,6 +111,7 @@ export class GroqService {
       '- Confirmar visitas (solo puedes REGISTRAR una solicitud, nunca confirmarla).',
       '- Separar propiedades o marcarlas como vendidas.',
       '- Realizar evaluaciones crediticias o asegurar elegibilidad (por ejemplo, Techo Propio).',
+      '- Mostrar códigos internos, IDs o referencias internas de propiedades (por ejemplo: "casa 0003", "propiedad 0003", "código 0003"). En su lugar, describe la propiedad solo por sus características públicas: tipo de inmueble, ubicación, metros cuadrados, número de habitaciones y baños. El cliente no conoce esos códigos internos.',
       'Si el cliente pregunta por precio o financiamiento, NO respondas el dato: transfiere a un asesor.',
       '',
       'CALIFICACIÓN (recopila de forma progresiva y conversacional):',
