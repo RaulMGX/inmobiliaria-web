@@ -1,5 +1,17 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/types/auth.types';
 import {
@@ -60,6 +72,37 @@ export class WhatsappController {
     @Body() dto: EnviarMensajeDto,
   ) {
     return this.whatsappService.enviarMensaje(empresaId, user, id, dto);
+  }
+
+  @Post('conversaciones/:id/medios')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 16 * 1024 * 1024 },
+      fileFilter: (_req: unknown, file: { mimetype: string }, callback: (error: Error | null, acceptFile: boolean) => void) => {
+        if (['image/jpeg', 'image/png', 'video/mp4'].includes(file.mimetype)) {
+          callback(null, true);
+          return;
+        }
+        callback(new BadRequestException('Solo se permiten imágenes JPG/PNG y videos MP4.'), false);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Enviar una imagen o un video por WhatsApp (asesor o administrador)' })
+  @ApiParam({ name: 'empresaId', example: 'cm123empresa' })
+  @ApiParam({ name: 'id', example: 'cm123conv' })
+  enviarMedio(
+    @Param('empresaId') empresaId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile()
+    file:
+      | { buffer: Buffer; originalname: string; mimetype: string; size: number }
+      | undefined,
+    @Body('caption') caption?: string,
+  ) {
+    if (!file) throw new BadRequestException('Selecciona una imagen JPG/PNG o un video MP4.');
+    return this.whatsappService.enviarMedio(empresaId, user, id, file, caption ?? '');
   }
 
   @Patch('conversaciones/:id/modo')

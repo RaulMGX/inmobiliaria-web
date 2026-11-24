@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
 import { requestScopeStore } from '../auth/context/request-scope';
 import type { JwtPayload } from '../auth/types/auth.types';
@@ -29,6 +36,16 @@ const USUARIO_SISTEMA: JwtPayload = {
 };
 
 type EmpresaWa = { id: string; nombre: string; waPhoneNumberId: string | null; waActivo: boolean };
+type PropiedadUbicacionIa = {
+  referencia?: string;
+  id: string;
+  nombre: string;
+  direccion: string | null;
+  distrito: string | null;
+  ciudad: string | null;
+  latitud: number | null;
+  longitud: number | null;
+};
 
 function separarNombre(
   nombrePerfil?: string | null,
@@ -413,18 +430,33 @@ export class WhatsappService {
         where: { active: true, deletedAt: null },
         take: 15,
         select: {
-          codigoInterno: true,
+          id: true,
           nombre: true,
           tipoPropiedad: true,
           estado: true,
           areaTotal: true,
           habitaciones: true,
           banos: true,
+          direccion: true,
           distrito: true,
+          ciudad: true,
+          latitud: true,
+          longitud: true,
           proyecto: { select: { nombre: true } },
         },
       }),
     ]);
+
+    const propiedadesDetalle: PropiedadUbicacionIa[] = (propiedades as any[]).map((p, index) => ({
+      referencia: `P${index + 1}`,
+      id: p.id,
+      nombre: p.nombre,
+      direccion: p.direccion,
+      distrito: p.distrito,
+      ciudad: p.ciudad,
+      latitud: p.latitud == null ? null : Number(p.latitud),
+      longitud: p.longitud == null ? null : Number(p.longitud),
+    }));
 
     return {
       proyectos: (proyectos as any[]).map((p) =>
@@ -436,20 +468,21 @@ export class WhatsappService {
           .filter(Boolean)
           .join(' | '),
       ),
-      propiedades: (propiedades as any[]).map((p) =>
+      propiedades: (propiedades as any[]).map((p, index) =>
         [
-          `[Código interno: ${p.codigoInterno}] ${p.nombre}`,
+          `[${propiedadesDetalle[index]?.referencia ?? `P${index + 1}`}] ${p.nombre}`,
           p.tipoPropiedad,
           p.proyecto?.nombre ? `Proyecto: ${p.proyecto.nombre}` : null,
           p.estado,
           p.areaTotal ? `${Number(p.areaTotal)} m²` : null,
           p.habitaciones ? `${p.habitaciones} dorm.` : null,
           p.banos ? `${p.banos} baños` : null,
-          p.distrito,
+          [p.direccion, p.distrito, p.ciudad].filter(Boolean).join(', '),
         ]
           .filter(Boolean)
           .join(' | '),
       ),
+      propiedadesDetalle,
     };
   }
 
@@ -485,9 +518,52 @@ export class WhatsappService {
       return;
     }
 
-    await this.guardarCalificacion(empresa, conversacion, analisis);
+    analisis.respuesta = analisis.respuesta
+      .replace(/\bP\d+\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    const propiedadSeleccionada = activos.propiedadesDetalle.find(
+      (p: PropiedadUbicacionIa) => p.referencia === analisis.propiedadReferencia,
+    );
+    const calificacionActual = await this.prisma.calificacionProspecto.findUnique({
+      where: { conversacionId: conversacion.id },
+      select: { propiedadInteresId: true },
+    });
+    const propiedadPrevia = calificacionActual?.propiedadInteresId
+      ? await this.prisma.propiedad.findFirst({
+          where: {
+            id: calificacionActual.propiedadInteresId,
+            active: true,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            nombre: true,
+            direccion: true,
+            distrito: true,
+            ciudad: true,
+            latitud: true,
+            longitud: true,
+          },
+        })
+      : null;
+    const propiedadInteres = propiedadSeleccionada ?? propiedadPrevia;
+    await this.guardarCalificacion(empresa, conversacion, analisis, propiedadInteres?.id ?? null);
 
-    if (analisis.respuesta) {
+    if (this.esConsultaUbicacion(mensajeActual)) {
+      await this.responderUbicacion(
+        empresa,
+        conversacion,
+        telefono,
+        propiedadInteres
+          ? {
+              ...propiedadInteres,
+              latitud: propiedadInteres.latitud == null ? null : Number(propiedadInteres.latitud),
+              longitud: propiedadInteres.longitud == null ? null : Number(propiedadInteres.longitud),
+            }
+          : null,
+      );
+    } else if (analisis.respuesta) {
       await this.enviarYRegistrar(empresa, conversacion, telefono, analisis.respuesta, 'IA');
     }
 
@@ -510,22 +586,147 @@ export class WhatsappService {
     });
   }
 
-  private async guardarCalificacion(empresa: EmpresaWa, conversacion: any, analisis: AnalisisProspecto) {
+  private esConsultaUbicacion(mensaje: string | null): boolean {
+    return /ubicaci[oó]n|d[oó]nde\s+(?:queda|est[aá]|se\s+ubica)|direcci[oó]n|mapa|c[oó]mo\s+llego/i.test(
+      String(mensaje ?? ''),
+    );
+  }
+
+  private async responderUbicacion(
+    empresa: EmpresaWa,
+    conversacion: any,
+    telefono: string,
+    propiedad: PropiedadUbicacionIa | null,
+  ) {
+    if (!propiedad) {
+      await this.enviarYRegistrar(
+        empresa,
+        conversacion,
+        telefono,
+        '¿De cuál propiedad o proyecto deseas la ubicación? Dime el nombre o envíame la publicación para compartirte el punto correcto.',
+        'IA',
+      );
+      return;
+    }
+
+    const direccion = [propiedad.direccion, propiedad.distrito, propiedad.ciudad]
+      .filter(Boolean)
+      .join(', ');
+    if (propiedad.latitud != null && propiedad.longitud != null) {
+      const mapa = `https://www.google.com/maps?q=${propiedad.latitud},${propiedad.longitud}`;
+      const nombre = propiedad.nombre || 'la propiedad que te interesa';
+      const texto = direccion
+        ? `La propiedad ${nombre} está en ${direccion}. Te comparto el punto exacto en el mapa.`
+        : `Te comparto la ubicación de ${nombre}.`;
+      await this.enviarYRegistrar(empresa, conversacion, telefono, texto, 'IA');
+      const pin = await this.enviarUbicacionYRegistrar(
+        empresa,
+        conversacion,
+        telefono,
+        propiedad,
+        direccion,
+        mapa,
+      );
+      if (pin?.waStatus === 'FALLIDO') {
+        await this.enviarYRegistrar(
+          empresa,
+          conversacion,
+          telefono,
+          `No pude enviar el pin como ubicación, pero aquí tienes el mapa: ${mapa}`,
+          'IA',
+        );
+      }
+      return;
+    }
+
+    if (direccion) {
+      const mapa = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
+      await this.enviarYRegistrar(
+        empresa,
+        conversacion,
+        telefono,
+        `La propiedad ${propiedad.nombre} está en ${direccion}. Puedes verla en el mapa: ${mapa}`,
+        'IA',
+      );
+      return;
+    }
+
+    await this.enviarYRegistrar(
+      empresa,
+      conversacion,
+      telefono,
+      `Tengo identificada la propiedad ${propiedad.nombre}, pero aún no tiene una ubicación registrada. Te derivaré con un asesor para confirmar el dato.`,
+      'IA',
+    );
+    await this.transferirAAsesor(
+      empresa,
+      conversacion,
+      'La propiedad de interés no tiene dirección ni coordenadas registradas.',
+      'Confirmar ubicación de la propiedad con el cliente.',
+    );
+  }
+
+  private async enviarUbicacionYRegistrar(
+    empresa: EmpresaWa,
+    conversacion: any,
+    telefono: string,
+    propiedad: PropiedadUbicacionIa,
+    direccion: string,
+    mapa: string,
+  ) {
+    if (!empresa.waPhoneNumberId) return null;
+    const resultado = await this.meta.enviarUbicacion(empresa.waPhoneNumberId, telefono, {
+      latitude: propiedad.latitud!,
+      longitude: propiedad.longitud!,
+      name: propiedad.nombre,
+      ...(direccion ? { address: direccion } : {}),
+    });
+    return this.prisma.mensajeWhatsapp.create({
+      data: {
+        waMessageId: resultado.messageId ?? null,
+        direccion: 'SALIENTE',
+        remitenteTipo: 'IA',
+        contenido: `${propiedad.nombre}${direccion ? ` | ${direccion}` : ''} | ${mapa}`,
+        tipoMensaje: 'UBICACION',
+        waStatus: (resultado.ok ? 'ENVIADO' : 'FALLIDO') as any,
+        errorCode: resultado.errorCode ?? null,
+        errorDetalle: resultado.errorDetalle ?? null,
+        empresaId: empresa.id,
+        conversacionId: conversacion.id,
+      },
+    });
+  }
+
+  private async guardarCalificacion(
+    empresa: EmpresaWa,
+    conversacion: any,
+    analisis: AnalisisProspecto,
+    propiedadInteresId: string | null,
+  ) {
     const cal = analisis.calificacion;
-    if (!cal) return;
+    if (!cal && !propiedadInteresId) return;
 
     const datos = {
-      nombresCompletos: cal.nombresCompletos ?? null,
-      tipoInmueble: cal.tipoInmueble ?? null,
-      ubicacionDeseada: cal.ubicacionDeseada ?? null,
-      presupuesto: cal.presupuesto ?? null,
-      inicialDisponible: cal.inicialDisponible ?? null,
-      intencionCompra: cal.intencionCompra ?? null,
-      interesVisita: Boolean(cal.interesVisita),
-      dni: cal.dni ?? null,
-      consentimientoDatos: Boolean(analisis.consentimientoDatos),
-      ...(analisis.consentimientoDatos ? { fechaConsentimiento: new Date() } : {}),
-      datosJson: cal as any,
+      ...(cal
+        ? {
+            nombresCompletos: cal.nombresCompletos ?? null,
+            tipoInmueble: cal.tipoInmueble ?? null,
+            ubicacionDeseada: cal.ubicacionDeseada ?? null,
+            presupuesto: cal.presupuesto ?? null,
+            inicialDisponible: cal.inicialDisponible ?? null,
+            intencionCompra: cal.intencionCompra ?? null,
+            interesVisita: Boolean(cal.interesVisita),
+            dni: cal.dni ?? null,
+          }
+        : {}),
+      ...(propiedadInteresId ? { propiedadInteresId } : {}),
+      ...(cal
+        ? {
+            consentimientoDatos: Boolean(analisis.consentimientoDatos),
+            ...(analisis.consentimientoDatos ? { fechaConsentimiento: new Date() } : {}),
+            datosJson: cal as any,
+          }
+        : {}),
     };
 
     await this.prisma.calificacionProspecto.upsert({
@@ -534,7 +735,7 @@ export class WhatsappService {
         empresaId: empresa.id,
         conversacionId: conversacion.id,
         clienteId: conversacion.clienteId ?? null,
-        alcanzaMinimo: Boolean(cal.presupuesto || cal.inicialDisponible),
+        alcanzaMinimo: Boolean(cal?.presupuesto || cal?.inicialDisponible),
         ...datos,
       },
       update: {
@@ -910,6 +1111,39 @@ export class WhatsappService {
     return mensajes.map((m) => ({ ...m, mediaUrl: urls.get(m.id) ?? null }));
   }
 
+  private async registrarRespuestaManual(conversacion: any, user: JwtPayload) {
+    const data: any = { ultimaActividad: new Date() };
+    if (conversacion.estado === 'PENDIENTE_ASESOR') {
+      data.estado = 'ATENCION_HUMANA';
+      data.fechaTransferencia = conversacion.fechaTransferencia ?? new Date();
+    }
+    if (!conversacion.asesorId) data.asesorId = user.sub;
+    await this.prisma.conversacionWhatsapp.update({
+      where: { id: conversacion.id },
+      data,
+    });
+
+    const asignacionPendiente: any = await this.prisma.asignacionConversacion.findFirst({
+      where: {
+        conversacionId: conversacion.id,
+        asesorId: user.sub,
+        estado: 'PENDIENTE',
+        active: true,
+        deletedAt: null,
+      },
+      orderBy: { fechaAsignacion: 'desc' },
+    });
+    if (asignacionPendiente) {
+      await this.prisma.asignacionConversacion.update({
+        where: { id: asignacionPendiente.id },
+        data: {
+          estado: 'ATENDIDA',
+          fechaPrimeraRespuesta: asignacionPendiente.fechaPrimeraRespuesta ?? new Date(),
+        },
+      });
+    }
+  }
+
   async enviarMensaje(
     empresaId: string,
     user: JwtPayload,
@@ -944,27 +1178,136 @@ export class WhatsappService {
       user.sub,
     );
 
-    const data: any = { ultimaActividad: new Date() };
-    if (conversacion.estado === 'PENDIENTE_ASESOR') {
-      data.estado = 'ATENCION_HUMANA';
-      data.fechaTransferencia = conversacion.fechaTransferencia ?? new Date();
-    }
-    if (!conversacion.asesorId) data.asesorId = user.sub;
-
-    await this.prisma.conversacionWhatsapp.update({ where: { id: conversacion.id }, data });
-
-    const asignacionPendiente: any = await this.prisma.asignacionConversacion.findFirst({
-      where: { conversacionId: conversacion.id, asesorId: user.sub, estado: 'PENDIENTE', active: true, deletedAt: null },
-      orderBy: { fechaAsignacion: 'desc' },
-    });
-    if (asignacionPendiente) {
-      await this.prisma.asignacionConversacion.update({
-        where: { id: asignacionPendiente.id },
-        data: { estado: 'ATENDIDA', fechaPrimeraRespuesta: asignacionPendiente.fechaPrimeraRespuesta ?? new Date() },
-      });
-    }
+    await this.registrarRespuestaManual(conversacion, user);
 
     return mensaje;
+  }
+
+  async enviarMedio(
+    empresaId: string,
+    user: JwtPayload,
+    conversacionId: string,
+    file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
+    captionRaw: string,
+  ) {
+    if (!['ADMIN', 'ASESOR'].includes(user.rolNombre)) {
+      throw new ForbiddenException('Solo un asesor o administrador puede enviar imágenes y videos.');
+    }
+
+    const maxImagen = 5 * 1024 * 1024;
+    const extensiones: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'video/mp4': 'mp4',
+    };
+    const extension = extensiones[file.mimetype];
+    if (!extension || !file.buffer?.length) {
+      throw new BadRequestException('El archivo debe ser una imagen JPG/PNG o un video MP4.');
+    }
+    const bytes = file.buffer;
+    const archivoValido =
+      (file.mimetype === 'image/jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8) ||
+      (file.mimetype === 'image/png' &&
+        bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) ||
+      (file.mimetype === 'video/mp4' &&
+        bytes.length >= 12 &&
+        bytes.subarray(4, 8).toString('ascii') === 'ftyp');
+    if (!archivoValido) {
+      throw new BadRequestException('El contenido del archivo no coincide con su tipo de imagen o video.');
+    }
+    if (file.mimetype.startsWith('image/') && file.size > maxImagen) {
+      throw new BadRequestException('Las imágenes no pueden superar 5 MB.');
+    }
+    if (file.size > 16 * 1024 * 1024) {
+      throw new BadRequestException('Los videos no pueden superar 16 MB.');
+    }
+    const caption = String(captionRaw ?? '').trim();
+    if (caption.length > 1024) {
+      throw new BadRequestException('El texto de la imagen o video no puede superar 1024 caracteres.');
+    }
+
+    const empresa: any = await this.prisma.empresa.findFirst({
+      where: { id: empresaId },
+      select: { id: true, nombre: true, waPhoneNumberId: true, waActivo: true },
+    });
+    if (!empresa) throw new NotFoundException('Empresa no encontrada.');
+    if (!empresa.waPhoneNumberId || !empresa.waActivo) {
+      throw new BadRequestException('La integración de WhatsApp no está activa para esta empresa.');
+    }
+
+    const conversacion: any = await this.prisma.conversacionWhatsapp.findFirst({
+      where: {
+        id: conversacionId,
+        empresaId,
+        active: true,
+        deletedAt: null,
+        ...(user.rolNombre === 'ASESOR'
+          ? {
+              OR: [
+                { asesorId: user.sub },
+                { estado: { in: ['PENDIENTE_ASESOR', 'ATENCION_HUMANA'] } },
+              ],
+            }
+          : {}),
+      },
+    });
+    if (!conversacion) throw new NotFoundException('Conversación no encontrada.');
+
+    const fileName = `${randomUUID()}.${extension}`;
+    const mediaId = await this.meta.subirMedia(
+      empresa.waPhoneNumberId,
+      file.buffer,
+      fileName,
+      file.mimetype,
+    );
+    const tipoMeta = file.mimetype.startsWith('image/') ? 'image' : 'video';
+    const resultado = await this.meta.enviarMedia(
+      empresa.waPhoneNumberId,
+      conversacion.waContactPhone,
+      tipoMeta,
+      { id: mediaId },
+      caption ? { caption } : undefined,
+    );
+
+    let mediaStoragePath: string | null = null;
+    if (this.storage.configurado) {
+      try {
+        mediaStoragePath = await this.storage.subirArchivo(
+          `empresas/${empresaId}/conversaciones/${conversacionId}`,
+          fileName,
+          file.buffer,
+          file.mimetype,
+        );
+      } catch (e: any) {
+        this.logger.warn(`No se pudo guardar una copia del medio saliente: ${e?.message ?? e}`);
+      }
+    }
+
+    const mensaje = await this.prisma.mensajeWhatsapp.create({
+      data: {
+        waMessageId: resultado.messageId ?? null,
+        direccion: 'SALIENTE',
+        remitenteTipo: 'ASESOR',
+        contenido: caption || file.originalname,
+        tipoMensaje: tipoMeta === 'image' ? 'IMAGEN' : 'VIDEO',
+        mediaId,
+        mediaMimeType: file.mimetype,
+        mediaStoragePath,
+        waStatus: (resultado.ok ? 'ENVIADO' : 'FALLIDO') as any,
+        errorCode: resultado.errorCode ?? null,
+        errorDetalle: resultado.errorDetalle ?? null,
+        empresaId,
+        conversacionId,
+        remitenteUsuarioId: user.sub,
+      },
+    });
+
+    await this.registrarRespuestaManual(conversacion, user);
+
+    return {
+      ...mensaje,
+      mediaUrl: mediaStoragePath ? await this.storage.crearUrlFirmada(mediaStoragePath) : null,
+    };
   }
 
   async cambiarModo(empresaId: string, user: JwtPayload, conversacionId: string, dto: CambiarModoDto) {

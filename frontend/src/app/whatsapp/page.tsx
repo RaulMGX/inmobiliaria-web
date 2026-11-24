@@ -31,9 +31,13 @@ interface Conversacion {
 
 interface Mensaje {
   id: string;
-  contenido: string;
+  contenido: string | null;
   direccion: DireccionMsg;
   remitenteTipo: RemitenteTipo;
+  tipoMensaje: string;
+  mediaMimeType: string | null;
+  waStatus: string;
+  errorDetalle: string | null;
   createdAt: string;
   mediaUrl: string | null;
 }
@@ -69,8 +73,11 @@ export default function WhatsAppPage() {
 
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [archivo, setArchivo] = useState<File | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const archivoInputRef = useRef<HTMLInputElement>(null);
+  const puedeEnviarMedios = rol === 'ADMIN' || rol === 'ASESOR';
 
   const cargarConversaciones = useCallback(async () => {
     if (!empresaId) return;
@@ -115,12 +122,30 @@ export default function WhatsAppPage() {
   }, [detalle?.mensajes.length]);
 
   const handleEnviar = async () => {
-    if (!empresaId || !convId || !texto.trim()) return;
+    if (!empresaId || !convId || (!texto.trim() && !archivo)) return;
     setEnviando(true);
     try {
-      await http.post(`/empresas/${empresaId}/whatsapp/conversaciones/${convId}/mensajes`, {
-        contenido: texto.trim(),
-      });
+      if (archivo) {
+        const form = new FormData();
+        form.append('file', archivo);
+        form.append('caption', texto.trim());
+        const { data } = await http.post(
+          `/empresas/${empresaId}/whatsapp/conversaciones/${convId}/medios`,
+          form,
+          { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+        );
+        if (data?.waStatus === 'FALLIDO') {
+          setError(data.errorDetalle || 'Meta no pudo entregar el archivo al cliente.');
+        }
+        setArchivo(null);
+      } else {
+        const { data } = await http.post(`/empresas/${empresaId}/whatsapp/conversaciones/${convId}/mensajes`, {
+          contenido: texto.trim(),
+        });
+        if (data?.waStatus === 'FALLIDO') {
+          setError(data.errorDetalle || 'Meta no pudo entregar el mensaje al cliente.');
+        }
+      }
       setTexto('');
       await Promise.all([cargarDetalle(convId), cargarConversaciones()]);
     } catch (e) {
@@ -129,6 +154,24 @@ export default function WhatsAppPage() {
     } finally {
       setEnviando(false);
     }
+  };
+
+  const handleSeleccionarArchivo = (file?: File) => {
+    if (!file) return;
+    const permitido = ['image/jpeg', 'image/png', 'video/mp4'].includes(file.type);
+    const maximo = file.type.startsWith('image/') ? 5 * 1024 * 1024 : 16 * 1024 * 1024;
+    if (!permitido) {
+      setArchivo(null);
+      setError('Selecciona una imagen JPG/PNG o un video MP4.');
+      return;
+    }
+    if (file.size > maximo) {
+      setArchivo(null);
+      setError(file.type.startsWith('image/') ? 'La imagen no puede superar 5 MB.' : 'El video no puede superar 16 MB.');
+      return;
+    }
+    setError(null);
+    setArchivo(file);
   };
 
   const handleCerrar = async () => {
@@ -301,6 +344,12 @@ export default function WhatsAppPage() {
                     const esEntrante = m.direccion === 'ENTRANTE';
                     const clase = esEntrante ? 'cliente' : m.remitenteTipo === 'IA' ? 'ia' : 'asesor';
                     const autor = esEntrante ? 'Cliente' : m.remitenteTipo === 'IA' ? 'IA' : 'Asesor';
+                    const mapa = m.tipoMensaje === 'UBICACION'
+                      ? m.contenido?.match(/https:\/\/www\.google\.com\/maps\S*/)?.[0]
+                      : null;
+                    const textoMensaje = mapa
+                      ? m.contenido?.replace(mapa, '').replace(/\s*\|\s*$/, '').trim()
+                      : m.contenido;
                     return (
                       <div key={m.id} className={`wa-msg ${clase}`}>
                         {!esEntrante && (
@@ -308,16 +357,28 @@ export default function WhatsAppPage() {
                             {autor}
                           </div>
                         )}
-                        <div>{m.contenido}</div>
+                        {textoMensaje && <div>{textoMensaje}</div>}
+                        {mapa && (
+                          <a href={mapa} target="_blank" rel="noreferrer" className="small">
+                            <i className="bi bi-geo-alt-fill me-1" />Ver ubicación en el mapa
+                          </a>
+                        )}
                         {m.mediaUrl && (
                           <div className="mt-2">
-                            {m.mediaUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                              <img src={m.mediaUrl} alt="media" style={{ maxWidth: 200, borderRadius: 8 }} />
+                            {m.mediaMimeType?.startsWith('image/') ? (
+                              <img src={m.mediaUrl} alt="Imagen enviada por WhatsApp" style={{ maxWidth: 240, borderRadius: 8 }} />
+                            ) : m.mediaMimeType?.startsWith('video/') ? (
+                              <video src={m.mediaUrl} controls style={{ maxWidth: 300, borderRadius: 8 }} />
                             ) : (
                               <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="small">
                                 <i className="bi bi-paperclip" /> Archivo adjunto
                               </a>
                             )}
+                          </div>
+                        )}
+                        {m.waStatus === 'FALLIDO' && (
+                          <div className="text-danger small mt-1">
+                            No enviado{m.errorDetalle ? `: ${m.errorDetalle}` : ''}
                           </div>
                         )}
                         <div className="wa-msg-meta">{formatDateTime(m.createdAt)}</div>
@@ -328,19 +389,55 @@ export default function WhatsAppPage() {
                 </div>
 
                 <div className="wa-composer">
+                  {puedeEnviarMedios && (
+                    <>
+                      <input
+                        ref={archivoInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,video/mp4"
+                        className="d-none"
+                        onChange={(e) => {
+                          handleSeleccionarArchivo(e.target.files?.[0]);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        title="Adjuntar imagen o video"
+                        aria-label="Adjuntar imagen o video"
+                        onClick={() => archivoInputRef.current?.click()}
+                        disabled={enviando || detalle.estado === 'CERRADA'}
+                      >
+                        <i className="bi bi-paperclip" />
+                      </button>
+                    </>
+                  )}
                   <input
                     type="text"
                     className="form-control form-control-sm"
-                    placeholder="Escribe un mensaje al cliente..."
+                    placeholder={archivo ? 'Texto opcional para la imagen o video...' : 'Escribe un mensaje al cliente...'}
                     value={texto}
                     onChange={(e) => setTexto(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEnviar(); } }}
                     disabled={enviando || detalle.estado === 'CERRADA'}
                   />
+                  {archivo && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm text-truncate"
+                      title={`Quitar ${archivo.name}`}
+                      onClick={() => setArchivo(null)}
+                      disabled={enviando}
+                    >
+                      <i className="bi bi-x-lg me-1" />
+                      <span className="d-none d-lg-inline">{archivo.name}</span>
+                    </button>
+                  )}
                   <button
                     className="btn btn-primary btn-sm d-flex align-items-center gap-1"
                     onClick={handleEnviar}
-                    disabled={enviando || !texto.trim() || detalle.estado === 'CERRADA'}
+                    disabled={enviando || (!texto.trim() && !archivo) || detalle.estado === 'CERRADA'}
                   >
                     {enviando && <span className="spinner-border spinner-border-sm" />}
                     <i className="bi bi-send" />

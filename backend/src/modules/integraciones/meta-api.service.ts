@@ -105,6 +105,50 @@ export class MetaApiService {
     });
   }
 
+  async subirMedia(
+    phoneNumberId: string,
+    contenido: Buffer,
+    fileName: string,
+    mimeType: string,
+  ): Promise<string> {
+    this.assertConfigurado();
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', mimeType);
+    form.append('file', new Blob([new Uint8Array(contenido)], { type: mimeType }), fileName);
+
+    const res = await fetch(`${this.baseUrl}/${phoneNumberId}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+      body: form,
+    });
+    const json: any = await res.json().catch(() => null);
+    if (!res.ok || !json?.id) {
+      const error = json?.error ?? {};
+      throw new ServiceUnavailableException(
+        `No se pudo subir el archivo a WhatsApp: ${error.message ?? `Meta Graph API ${res.status}`}`,
+      );
+    }
+    return String(json.id);
+  }
+
+  enviarUbicacion(
+    phoneNumberId: string,
+    to: string,
+    ubicacion: { latitude: number; longitude: number; name?: string; address?: string },
+  ): Promise<ResultadoEnvioMeta> {
+    return this.enviar(phoneNumberId, {
+      to,
+      type: 'location',
+      location: {
+        latitude: ubicacion.latitude,
+        longitude: ubicacion.longitude,
+        ...(ubicacion.name ? { name: ubicacion.name } : {}),
+        ...(ubicacion.address ? { address: ubicacion.address } : {}),
+      },
+    });
+  }
+
   enviarPlantilla(
     phoneNumberId: string,
     to: string,

@@ -8,6 +8,7 @@ export type AnalisisProspecto = {
   transferir: boolean;
   motivoTransferencia?: string | null;
   resumenComercial?: string | null;
+  propiedadReferencia?: string | null;
   solicitudVisita?: boolean;
   consentimientoDatos?: boolean;
   calificacion?: {
@@ -141,12 +142,20 @@ export class GroqService {
       '- No encuentras información confiable.',
       '- El caso requiere intervención humana.',
       '',
+      'IDENTIFICACIÓN DE PROPIEDAD:',
+      '- Revisa el mensaje actual y el historial para identificar la propiedad concreta que le interesa al cliente.',
+      '- Si una propiedad del catálogo coincide claramente, devuelve su referencia interna exacta en propiedadReferencia.',
+      '- Si no hay coincidencia segura o el cliente aún no ha señalado una propiedad concreta, devuelve null y pregunta cuál propiedad desea consultar.',
+      '- Las referencias P1, P2, etc. son solo para el sistema: nunca las incluyas en respuesta ni se las muestres al cliente.',
+      '- Si pregunta por ubicación, usa solo la ubicación de la propiedad identificada; no inventes ni mezcles ubicaciones.',
+      '',
       'Responde SIEMPRE en JSON con este esquema exacto:',
       JSON.stringify({
         respuesta: 'texto a enviar al cliente por WhatsApp',
         transferir: false,
         motivoTransferencia: 'motivo si transferir=true',
         resumenComercial: 'resumen breve del interés del cliente',
+        propiedadReferencia: null,
         solicitudVisita: false,
         consentimientoDatos: false,
         calificacion: {
@@ -193,6 +202,7 @@ export class GroqService {
         transferir: Boolean(json?.transferir),
         motivoTransferencia: json?.motivoTransferencia ?? null,
         resumenComercial: json?.resumenComercial ?? null,
+        propiedadReferencia: json?.propiedadReferencia ?? null,
         solicitudVisita: Boolean(json?.solicitudVisita),
         consentimientoDatos: Boolean(json?.consentimientoDatos),
         calificacion: json?.calificacion ?? null,
