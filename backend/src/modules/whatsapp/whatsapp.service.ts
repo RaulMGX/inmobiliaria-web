@@ -10,7 +10,7 @@ import { PrismaService } from '../../infrastructure/database/prisma/prisma.servi
 import { requestScopeStore } from '../auth/context/request-scope';
 import type { JwtPayload } from '../auth/types/auth.types';
 import { GroqService, type AnalisisProspecto } from '../integraciones/groq.service';
-import { MetaApiService } from '../integraciones/meta-api.service';
+import { MetaApiService, type PlantillaMeta } from '../integraciones/meta-api.service';
 import { SupabaseStorageService } from '../integraciones/supabase-storage.service';
 import { normalizarTelefono } from './whatsapp-signature.util';
 import type {
@@ -36,6 +36,12 @@ const USUARIO_SISTEMA: JwtPayload = {
 };
 
 type EmpresaWa = { id: string; nombre: string; waPhoneNumberId: string | null; waActivo: boolean };
+type ArchivoAdjunto = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+};
 type PropiedadUbicacionIa = {
   referencia?: string;
   id: string;
@@ -1304,6 +1310,304 @@ export class WhatsappService {
 
     await this.registrarRespuestaManual(conversacion, user);
 
+    return {
+      ...mensaje,
+      mediaUrl: mediaStoragePath ? await this.storage.crearUrlFirmada(mediaStoragePath) : null,
+    };
+  }
+
+  private validarAccesoPlantillas(user: JwtPayload, soloAdmin = false) {
+    const rolesPermitidos = soloAdmin ? ['ADMIN'] : ['ADMIN', 'ASESOR'];
+    if (!rolesPermitidos.includes(user.rolNombre)) {
+      throw new ForbiddenException(
+        soloAdmin
+          ? 'Solo un administrador puede crear o administrar plantillas.'
+          : 'Solo un asesor o administrador puede usar plantillas.',
+      );
+    }
+  }
+
+  private async obtenerEmpresaPlantillas(empresaId: string): Promise<EmpresaWa> {
+    const empresa = await this.prisma.empresa.findFirst({
+      where: { id: empresaId, active: true, deletedAt: null },
+      select: { id: true, nombre: true, waPhoneNumberId: true, waActivo: true },
+    });
+    if (!empresa) throw new NotFoundException('Empresa no encontrada.');
+    if (!empresa.waActivo || !empresa.waPhoneNumberId) {
+      throw new BadRequestException('La integración de WhatsApp no está activa para esta empresa.');
+    }
+    return empresa;
+  }
+
+  private validarArchivoPlantilla(
+    file: ArchivoAdjunto,
+    headerFormat: 'IMAGE' | 'VIDEO',
+  ): string {
+    const mimePermitidos =
+      headerFormat === 'IMAGE' ? ['image/jpeg', 'image/png'] : ['video/mp4'];
+    if (!mimePermitidos.includes(file.mimetype) || !file.buffer?.length) {
+      throw new BadRequestException(
+        headerFormat === 'IMAGE'
+          ? 'Para esta plantilla selecciona una imagen JPG/PNG.'
+          : 'Para esta plantilla selecciona un video MP4.',
+      );
+    }
+    const maxBytes = headerFormat === 'IMAGE' ? 5 * 1024 * 1024 : 16 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new BadRequestException(
+        headerFormat === 'IMAGE' ? 'La muestra no puede superar 5 MB.' : 'El video no puede superar 16 MB.',
+      );
+    }
+    const bytes = file.buffer;
+    const valido =
+      (file.mimetype === 'image/jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8) ||
+      (file.mimetype === 'image/png' &&
+        bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) ||
+      (file.mimetype === 'video/mp4' &&
+        bytes.length >= 12 &&
+        bytes.subarray(4, 8).toString('ascii') === 'ftyp');
+    if (!valido) throw new BadRequestException('El contenido del archivo no coincide con el formato indicado.');
+    return file.mimetype === 'image/jpeg' ? 'jpg' : file.mimetype === 'image/png' ? 'png' : 'mp4';
+  }
+
+  private contarVariablesPlantilla(body: string): number {
+    const tokens = [...body.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)]
+      .map((match) => match[1])
+      .filter((token): token is string => typeof token === 'string');
+    if (!tokens.length) return 0;
+    if (tokens.some((token) => !/^\d+$/.test(token))) {
+      throw new BadRequestException('El CRM admite variables posicionales {{1}}, {{2}}, etc.');
+    }
+    const numeros = [...new Set(tokens.map(Number))].sort((a, b) => a - b);
+    if (numeros.some((numero, index) => numero !== index + 1)) {
+      throw new BadRequestException('Las variables deben estar numeradas consecutivamente desde {{1}}.');
+    }
+    return numeros.length;
+  }
+
+  async listarPlantillas(empresaId: string, user: JwtPayload) {
+    this.validarAccesoPlantillas(user);
+    await this.obtenerEmpresaPlantillas(empresaId);
+    return this.meta.listarPlantillas();
+  }
+
+  async crearPlantilla(
+    empresaId: string,
+    user: JwtPayload,
+    input: {
+      name: string;
+      language: string;
+      category: string;
+      body: string;
+      headerFormat: string;
+      bodyExamples: string;
+    },
+    headerSample?: ArchivoAdjunto,
+  ) {
+    this.validarAccesoPlantillas(user, true);
+    await this.obtenerEmpresaPlantillas(empresaId);
+
+    const name = String(input.name ?? '').trim();
+    const language = String(input.language ?? '').trim();
+    const category = String(input.category ?? '').toUpperCase();
+    const body = String(input.body ?? '').trim();
+    const headerFormat = String(input.headerFormat ?? 'NONE').toUpperCase();
+    if (!/^[a-z0-9_]{1,512}$/.test(name)) {
+      throw new BadRequestException('El nombre debe usar minúsculas, números y guion bajo.');
+    }
+    if (!/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(language)) {
+      throw new BadRequestException('Usa un código de idioma válido, por ejemplo es_PE.');
+    }
+    if (!['MARKETING', 'UTILITY'].includes(category)) {
+      throw new BadRequestException('Selecciona la categoría Marketing o Utilidad.');
+    }
+    if (!body || body.length > 1024) {
+      throw new BadRequestException('El cuerpo de la plantilla debe tener entre 1 y 1024 caracteres.');
+    }
+    if (!['NONE', 'IMAGE', 'VIDEO'].includes(headerFormat)) {
+      throw new BadRequestException('El encabezado debe ser Ninguno, Imagen o Video.');
+    }
+    const numeroVariables = this.contarVariablesPlantilla(body);
+    let bodyExamples: string[] = [];
+    if (input.bodyExamples) {
+      try {
+        const parsed = JSON.parse(input.bodyExamples);
+        if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== 'string')) {
+          throw new Error('Formato inválido');
+        }
+        bodyExamples = parsed.map((value) => value.trim());
+      } catch {
+        throw new BadRequestException('No se pudieron leer los ejemplos de variables.');
+      }
+    }
+    if (bodyExamples.length !== numeroVariables) {
+      throw new BadRequestException(
+        numeroVariables
+          ? `Ingresa un ejemplo para cada variable (se necesitan ${numeroVariables}).`
+          : 'No agregues ejemplos si el cuerpo no tiene variables.',
+      );
+    }
+
+    let headerHandle: string | undefined;
+    if (headerFormat === 'NONE' && headerSample) {
+      throw new BadRequestException('Quitaste el encabezado, pero aún seleccionaste un archivo de muestra.');
+    }
+    if (headerFormat !== 'NONE') {
+      if (!headerSample) throw new BadRequestException('Selecciona la muestra que Meta revisará.');
+      const extension = this.validarArchivoPlantilla(headerSample, headerFormat as 'IMAGE' | 'VIDEO');
+      headerHandle = await this.meta.subirMuestraPlantilla(
+        `muestra_${name}.${extension}`,
+        headerSample.buffer,
+        headerSample.mimetype,
+      );
+    }
+
+    return this.meta.crearPlantilla(
+      {
+        name,
+        language,
+        category: category as 'MARKETING' | 'UTILITY',
+        body,
+        headerFormat: headerFormat as 'NONE' | 'IMAGE' | 'VIDEO',
+        bodyExamples,
+      },
+      headerHandle,
+    );
+  }
+
+  async enviarPlantillaConversacion(
+    empresaId: string,
+    user: JwtPayload,
+    conversacionId: string,
+    input: {
+      name: string;
+      language: string;
+      bodyParams: string;
+      consentimientoConfirmado: string | boolean;
+    },
+    file?: ArchivoAdjunto,
+  ) {
+    this.validarAccesoPlantillas(user);
+    if (input.consentimientoConfirmado !== true && input.consentimientoConfirmado !== 'true') {
+      throw new BadRequestException(
+        'Confirma que el cliente autorizó recibir este mensaje por WhatsApp.',
+      );
+    }
+    const empresa = await this.obtenerEmpresaPlantillas(empresaId);
+    const conversacion: any = await this.prisma.conversacionWhatsapp.findFirst({
+      where: {
+        id: conversacionId,
+        empresaId,
+        active: true,
+        deletedAt: null,
+        ...(user.rolNombre === 'ASESOR'
+          ? {
+              OR: [
+                { asesorId: user.sub },
+                { estado: { in: ['PENDIENTE_ASESOR', 'ATENCION_HUMANA'] } },
+              ],
+            }
+          : {}),
+      },
+    });
+    if (!conversacion) throw new NotFoundException('Conversación no encontrada.');
+
+    let bodyParams: string[];
+    try {
+      const parsed = JSON.parse(input.bodyParams || '[]');
+      if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== 'string')) {
+        throw new Error('Formato inválido');
+      }
+      bodyParams = parsed;
+    } catch {
+      throw new BadRequestException('Revisa los valores de las variables de la plantilla.');
+    }
+
+    const plantillas = await this.meta.listarPlantillas();
+    const plantilla = plantillas.find(
+      (item) => item.name === input.name && item.language === input.language,
+    );
+    if (!plantilla || plantilla.status !== 'APPROVED') {
+      throw new BadRequestException('Solo se pueden enviar plantillas aprobadas por Meta.');
+    }
+    const bodyComponent = plantilla.components?.find((component) => component.type.toUpperCase() === 'BODY');
+    const body = bodyComponent?.text ?? '';
+    const numeroVariables = this.contarVariablesPlantilla(body);
+    if (bodyParams.length !== numeroVariables) {
+      throw new BadRequestException(`Esta plantilla necesita ${numeroVariables} valores para sus variables.`);
+    }
+
+    const header = plantilla.components?.find((component) => component.type.toUpperCase() === 'HEADER');
+    const headerFormat = header?.format?.toUpperCase() ?? 'NONE';
+    let media: { tipo: 'image' | 'video'; id: string } | undefined;
+    let mediaStoragePath: string | null = null;
+    let mediaMimeType: string | null = null;
+    let fileName: string | null = null;
+
+    if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO') {
+      if (!file) {
+        throw new BadRequestException(
+          headerFormat === 'IMAGE'
+            ? 'Adjunta la imagen que enviarás en el encabezado de esta plantilla.'
+            : 'Adjunta el video que enviarás en el encabezado de esta plantilla.',
+        );
+      }
+      const extension = this.validarArchivoPlantilla(file, headerFormat);
+      fileName = `${randomUUID()}.${extension}`;
+      mediaMimeType = file.mimetype;
+      media = {
+        tipo: headerFormat === 'IMAGE' ? 'image' : 'video',
+        id: await this.meta.subirMedia(
+          empresa.waPhoneNumberId!,
+          file.buffer,
+          fileName,
+          file.mimetype,
+        ),
+      };
+    } else if (file) {
+      throw new BadRequestException('Esta plantilla no tiene encabezado de imagen o video.');
+    }
+
+    const resultado = await this.meta.enviarPlantilla(
+      empresa.waPhoneNumberId!,
+      conversacion.waContactPhone,
+      plantilla.name,
+      plantilla.language,
+      bodyParams,
+      media,
+    );
+    if (file && fileName && this.storage.configurado) {
+      try {
+        mediaStoragePath = await this.storage.subirArchivo(
+          `empresas/${empresaId}/conversaciones/${conversacionId}`,
+          fileName,
+          file.buffer,
+          file.mimetype,
+        );
+      } catch (e: any) {
+        this.logger.warn(`No se pudo guardar una copia del medio de plantilla: ${e?.message ?? e}`);
+      }
+    }
+    const contenido = body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_match, numero) => bodyParams[Number(numero) - 1] ?? '');
+    const mensaje = await this.prisma.mensajeWhatsapp.create({
+      data: {
+        waMessageId: resultado.messageId ?? null,
+        direccion: 'SALIENTE',
+        remitenteTipo: 'ASESOR',
+        contenido: contenido || `[Plantilla ${plantilla.name}]`,
+        tipoMensaje: media?.tipo === 'image' ? 'IMAGEN' : media?.tipo === 'video' ? 'VIDEO' : 'TEXTO',
+        mediaId: media?.id ?? null,
+        mediaMimeType,
+        mediaStoragePath,
+        waStatus: (resultado.ok ? 'ENVIADO' : 'FALLIDO') as any,
+        errorCode: resultado.errorCode ?? null,
+        errorDetalle: resultado.errorDetalle ?? null,
+        empresaId,
+        conversacionId,
+        remitenteUsuarioId: user.sub,
+      },
+    });
+    await this.registrarRespuestaManual(conversacion, user);
     return {
       ...mensaje,
       mediaUrl: mediaStoragePath ? await this.storage.crearUrlFirmada(mediaStoragePath) : null,

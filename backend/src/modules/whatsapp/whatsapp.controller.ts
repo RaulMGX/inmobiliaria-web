@@ -105,6 +105,93 @@ export class WhatsappController {
     return this.whatsappService.enviarMedio(empresaId, user, id, file, caption ?? '');
   }
 
+  @Get('plantillas')
+  @ApiOperation({ summary: 'Listar plantillas y estados de revisión de Meta' })
+  @ApiParam({ name: 'empresaId', example: 'cm123empresa' })
+  listarPlantillas(
+    @Param('empresaId') empresaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.whatsappService.listarPlantillas(empresaId, user);
+  }
+
+  @Post('plantillas')
+  @UseInterceptors(
+    FileInterceptor('headerSample', {
+      limits: { fileSize: 16 * 1024 * 1024 },
+      fileFilter: (_req: unknown, file: { mimetype: string }, callback: (error: Error | null, acceptFile: boolean) => void) => {
+        if (['image/jpeg', 'image/png', 'video/mp4'].includes(file.mimetype)) {
+          callback(null, true);
+          return;
+        }
+        callback(new BadRequestException('La muestra debe ser JPG, PNG o MP4.'), false);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Enviar una plantilla nueva a revisión de Meta (administrador)' })
+  @ApiParam({ name: 'empresaId', example: 'cm123empresa' })
+  crearPlantilla(
+    @Param('empresaId') empresaId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body('name') name: string,
+    @Body('language') language: string,
+    @Body('category') category: string,
+    @Body('body') body: string,
+    @Body('headerFormat') headerFormat: string,
+    @Body('bodyExamples') bodyExamples: string,
+    @UploadedFile()
+    headerSample:
+      | { buffer: Buffer; originalname: string; mimetype: string; size: number }
+      | undefined,
+  ) {
+    return this.whatsappService.crearPlantilla(
+      empresaId,
+      user,
+      { name, language, category, body, headerFormat, bodyExamples },
+      headerSample,
+    );
+  }
+
+  @Post('conversaciones/:id/plantillas')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 16 * 1024 * 1024 },
+      fileFilter: (_req: unknown, file: { mimetype: string }, callback: (error: Error | null, acceptFile: boolean) => void) => {
+        if (['image/jpeg', 'image/png', 'video/mp4'].includes(file.mimetype)) {
+          callback(null, true);
+          return;
+        }
+        callback(new BadRequestException('Solo se permiten imágenes JPG/PNG y videos MP4.'), false);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Enviar una plantilla aprobada a un cliente' })
+  @ApiParam({ name: 'empresaId', example: 'cm123empresa' })
+  @ApiParam({ name: 'id', example: 'cm123conv' })
+  enviarPlantillaConversacion(
+    @Param('empresaId') empresaId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body('name') name: string,
+    @Body('language') language: string,
+    @Body('bodyParams') bodyParams: string,
+    @Body('consentimientoConfirmado') consentimientoConfirmado: string,
+    @UploadedFile()
+    file:
+      | { buffer: Buffer; originalname: string; mimetype: string; size: number }
+      | undefined,
+  ) {
+    return this.whatsappService.enviarPlantillaConversacion(
+      empresaId,
+      user,
+      id,
+      { name, language, bodyParams, consentimientoConfirmado },
+      file,
+    );
+  }
+
   @Patch('conversaciones/:id/modo')
   @ApiOperation({ summary: 'Alternar atención IA / humana de la conversación' })
   @ApiParam({ name: 'empresaId', example: 'cm123empresa' })

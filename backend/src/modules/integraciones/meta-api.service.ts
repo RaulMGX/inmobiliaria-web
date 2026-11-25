@@ -14,6 +14,21 @@ export type MediaDescargada = {
   fileName: string;
 };
 
+export type PlantillaMeta = {
+  id: string;
+  name: string;
+  status: string;
+  category: string;
+  language: string;
+  rejected_reason?: string | null;
+  components: Array<{
+    type: string;
+    format?: string;
+    text?: string;
+    example?: { body_text?: string[][]; header_handle?: string[] };
+  }>;
+};
+
 /**
  * Cliente de WhatsApp Business Cloud API (Meta Graph API).
  * Usa `fetch` nativo (Node 18+) para no agregar dependencias.
@@ -32,6 +47,14 @@ export class MetaApiService {
     return this.config.get<string>('WHATSAPP_ACCESS_TOKEN') ?? '';
   }
 
+  private get businessAccountId(): string {
+    return this.config.get<string>('WHATSAPP_BUSINESS_ACCOUNT_ID') ?? '';
+  }
+
+  private get appId(): string {
+    return this.config.get<string>('META_APP_ID') ?? '';
+  }
+
   private get baseUrl(): string {
     return `https://graph.facebook.com/${this.graphVersion}`;
   }
@@ -42,6 +65,48 @@ export class MetaApiService {
         'WHATSAPP_ACCESS_TOKEN no está configurado. No se pueden enviar mensajes.',
       );
     }
+  }
+
+  private assertPlantillasConfiguradas(requiereMuestraMultimedia = false) {
+    this.assertConfigurado();
+    if (!this.businessAccountId) {
+      throw new ServiceUnavailableException(
+        'Falta WHATSAPP_BUSINESS_ACCOUNT_ID para administrar plantillas de WhatsApp.',
+      );
+    }
+    if (requiereMuestraMultimedia && !this.appId) {
+      throw new ServiceUnavailableException(
+        'Falta META_APP_ID para subir la muestra multimedia que Meta revisará.',
+      );
+    }
+  }
+
+  private async solicitudGraph<T = any>(
+    path: string,
+    method: 'GET' | 'POST',
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<T> {
+    this.assertConfigurado();
+    const esBinario = body instanceof Uint8Array;
+    const init: RequestInit = {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        ...(body && !esBinario ? { 'Content-Type': 'application/json' } : {}),
+        ...headers,
+      },
+      ...(body ? { body: (esBinario ? body : JSON.stringify(body)) as BodyInit } : {}),
+    };
+    const res = await fetch(`${this.baseUrl}/${path}`, init);
+    const json: any = await res.json().catch(() => null);
+    if (!res.ok) {
+      const error = json?.error ?? {};
+      throw new ServiceUnavailableException(
+        `Meta Graph API ${res.status}: ${error.message ?? 'error desconocido'} (code ${error.code ?? '-'})`,
+      );
+    }
+    return json as T;
   }
 
   private async post<T = any>(path: string, body: unknown): Promise<T> {
@@ -155,19 +220,123 @@ export class MetaApiService {
     nombrePlantilla: string,
     idioma: string,
     parametros: string[] = [],
+    medio?: { tipo: 'image' | 'video'; id: string },
   ): Promise<ResultadoEnvioMeta> {
-    const components = parametros.length
-      ? [{ type: 'body', parameters: parametros.map((p) => ({ type: 'text', text: p })) }]
-      : undefined;
+    const components: Record<string, unknown>[] = [];
+    if (medio) {
+      components.push({
+        type: 'header',
+        parameters: [{ type: medio.tipo, [medio.tipo]: { id: medio.id } }],
+      });
+    }
+    if (parametros.length) {
+      components.push({
+        type: 'body',
+        parameters: parametros.map((p) => ({ type: 'text', text: p })),
+      });
+    }
     return this.enviar(phoneNumberId, {
       to,
       type: 'template',
       template: {
         name: nombrePlantilla,
         language: { code: idioma },
-        ...(components ? { components } : {}),
+        ...(components.length ? { components } : {}),
       },
     });
+  }
+
+  async listarPlantillas(): Promise<PlantillaMeta[]> {
+    this.assertPlantillasConfiguradas();
+    const plantillas: PlantillaMeta[] = [];
+    let after: string | undefined;
+
+    for (let pagina = 0; pagina < 10; pagina += 1) {
+      const query = new URLSearchParams({
+        fields: 'name,status,category,language,components,rejected_reason',
+        limit: '100',
+      });
+      if (after) query.set('after', after);
+      const response = await this.solicitudGraph<{
+        data?: PlantillaMeta[];
+        paging?: { cursors?: { after?: string }; next?: string };
+      }>(`${this.businessAccountId}/message_templates?${query.toString()}`, 'GET');
+      plantillas.push(...(response.data ?? []));
+      if (!response.paging?.next || !response.paging.cursors?.after) break;
+      after = response.paging.cursors.after;
+    }
+    return plantillas;
+  }
+
+  async crearPlantilla(
+    plantilla: {
+      name: string;
+      language: string;
+      category: 'MARKETING' | 'UTILITY';
+      body: string;
+      headerFormat: 'NONE' | 'IMAGE' | 'VIDEO';
+      bodyExamples: string[];
+    },
+    headerHandle?: string,
+  ) {
+    this.assertPlantillasConfiguradas(plantilla.headerFormat !== 'NONE');
+    const components: Record<string, unknown>[] = [];
+    if (plantilla.headerFormat !== 'NONE') {
+      if (!headerHandle) {
+        throw new ServiceUnavailableException('Meta requiere una muestra para el encabezado multimedia.');
+      }
+      components.push({
+        type: 'HEADER',
+        format: plantilla.headerFormat,
+        example: { header_handle: [headerHandle] },
+      });
+    }
+    const bodyComponent: Record<string, unknown> = {
+      type: 'BODY',
+      text: plantilla.body,
+    };
+    if (plantilla.bodyExamples.length) {
+      bodyComponent.example = { body_text: [plantilla.bodyExamples] };
+    }
+    components.push(bodyComponent);
+
+    return this.solicitudGraph(`${this.businessAccountId}/message_templates`, 'POST', {
+      name: plantilla.name,
+      language: plantilla.language,
+      category: plantilla.category,
+      parameter_format: 'positional',
+      components,
+    });
+  }
+
+  async subirMuestraPlantilla(
+    fileName: string,
+    contenido: Buffer,
+    mimeType: string,
+  ): Promise<string> {
+    this.assertPlantillasConfiguradas(true);
+    const query = new URLSearchParams({
+      file_name: fileName,
+      file_length: String(contenido.length),
+      file_type: mimeType,
+    });
+    const sesion = await this.solicitudGraph<{ id?: string }>(
+      `${this.appId}/uploads?${query.toString()}`,
+      'POST',
+    );
+    if (!sesion.id) {
+      throw new ServiceUnavailableException('Meta no devolvió una sesión para subir la muestra multimedia.');
+    }
+    const response = await this.solicitudGraph<{ h?: string }>(
+      sesion.id,
+      'POST',
+      new Uint8Array(contenido),
+      { Authorization: `OAuth ${this.accessToken}`, file_offset: '0' },
+    );
+    if (!response.h) {
+      throw new ServiceUnavailableException('Meta no devolvió el identificador de la muestra multimedia.');
+    }
+    return response.h;
   }
 
   marcarLeido(phoneNumberId: string, messageId: string): Promise<ResultadoEnvioMeta> {

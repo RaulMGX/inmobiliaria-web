@@ -2,6 +2,7 @@
 
 import './list.scss';
 import { AxiosError } from 'axios';
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AppLayout from '@/components/AppLayout';
 import { formatDateTime, getSession, http } from '@/lib/api';
@@ -42,6 +43,16 @@ interface Mensaje {
   mediaUrl: string | null;
 }
 
+interface PlantillaMeta {
+  id: string;
+  name: string;
+  status: string;
+  category: string;
+  language: string;
+  rejected_reason?: string | null;
+  components: { type: string; format?: string; text?: string }[];
+}
+
 interface ConversacionDetalle extends Omit<Conversacion, 'asignaciones'> {
   cliente: { id: string; nombres: string; apellidos: string; celular: string; correo: string | null } | null;
   campana: { id: string; nombreCampana: string; plataforma: string } | null;
@@ -74,10 +85,31 @@ export default function WhatsAppPage() {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [plantillaModalAbierto, setPlantillaModalAbierto] = useState(false);
+  const [cargandoPlantillas, setCargandoPlantillas] = useState(false);
+  const [plantillasAprobadas, setPlantillasAprobadas] = useState<PlantillaMeta[]>([]);
+  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState('');
+  const [valoresPlantilla, setValoresPlantilla] = useState<string[]>([]);
+  const [archivoPlantilla, setArchivoPlantilla] = useState<File | null>(null);
+  const [consentimientoConfirmado, setConsentimientoConfirmado] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const archivoInputRef = useRef<HTMLInputElement>(null);
+  const archivoPlantillaRef = useRef<HTMLInputElement>(null);
   const puedeEnviarMedios = rol === 'ADMIN' || rol === 'ASESOR';
+  const plantillaActual = plantillasAprobadas.find(
+    (plantilla) => `${plantilla.name}|${plantilla.language}` === plantillaSeleccionada,
+  );
+  const headerActual = plantillaActual?.components.find(
+    (component) => component.type.toUpperCase() === 'HEADER',
+  )?.format?.toUpperCase() ?? 'NONE';
+  const cuerpoPlantilla = plantillaActual?.components.find(
+    (component) => component.type.toUpperCase() === 'BODY',
+  )?.text ?? '';
+  const cantidadVariables = Math.max(
+    0,
+    ...[...cuerpoPlantilla.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((match) => Number(match[1])),
+  );
 
   const cargarConversaciones = useCallback(async () => {
     if (!empresaId) return;
@@ -174,6 +206,101 @@ export default function WhatsAppPage() {
     setArchivo(file);
   };
 
+  const handleAbrirPlantillas = async () => {
+    if (!empresaId || !puedeEnviarMedios) return;
+    setError(null);
+    setCargandoPlantillas(true);
+    try {
+      const { data } = await http.get<PlantillaMeta[]>(`/empresas/${empresaId}/whatsapp/plantillas`);
+      const aprobadas = (data || []).filter((item) => item.status === 'APPROVED');
+      setPlantillasAprobadas(aprobadas);
+      if (!aprobadas.length) {
+        setError('Todavía no hay plantillas aprobadas por Meta. Un administrador puede crearlas desde Marketing → Plantillas WhatsApp.');
+        return;
+      }
+      setPlantillaSeleccionada('');
+      setValoresPlantilla([]);
+      setArchivoPlantilla(null);
+      setConsentimientoConfirmado(false);
+      setPlantillaModalAbierto(true);
+    } catch (e) {
+      const err = e as AxiosError<any>;
+      setError(err.response?.data?.message ?? 'No se pudieron consultar las plantillas de Meta.');
+    } finally {
+      setCargandoPlantillas(false);
+    }
+  };
+
+  const handleSeleccionarPlantilla = (value: string) => {
+    setPlantillaSeleccionada(value);
+    setArchivoPlantilla(null);
+    setConsentimientoConfirmado(false);
+    const plantilla = plantillasAprobadas.find(
+      (item) => `${item.name}|${item.language}` === value,
+    );
+    const cuerpo = plantilla?.components.find((component) => component.type.toUpperCase() === 'BODY')?.text ?? '';
+    const variables = [...cuerpo.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((match) => Number(match[1]));
+    setValoresPlantilla(Array.from({ length: Math.max(0, ...variables) }, () => ''));
+  };
+
+  const handleSeleccionarArchivoPlantilla = (file?: File) => {
+    if (!file) return;
+    const esImagen = headerActual === 'IMAGE' && ['image/jpeg', 'image/png'].includes(file.type);
+    const esVideo = headerActual === 'VIDEO' && file.type === 'video/mp4';
+    const maximo = headerActual === 'IMAGE' ? 5 * 1024 * 1024 : 16 * 1024 * 1024;
+    if (!esImagen && !esVideo) {
+      setArchivoPlantilla(null);
+      setError(headerActual === 'IMAGE' ? 'Esta plantilla requiere una imagen JPG/PNG.' : 'Esta plantilla requiere un video MP4.');
+      return;
+    }
+    if (file.size > maximo) {
+      setArchivoPlantilla(null);
+      setError(headerActual === 'IMAGE' ? 'La imagen no puede superar 5 MB.' : 'El video no puede superar 16 MB.');
+      return;
+    }
+    setError(null);
+    setArchivoPlantilla(file);
+  };
+
+  const handleEnviarPlantilla = async () => {
+    if (!empresaId || !convId || !plantillaActual || !consentimientoConfirmado) return;
+    if (valoresPlantilla.some((value) => !value.trim())) {
+      setError('Completa todos los valores de la plantilla.');
+      return;
+    }
+    if ((headerActual === 'IMAGE' || headerActual === 'VIDEO') && !archivoPlantilla) {
+      setError(headerActual === 'IMAGE' ? 'Adjunta una imagen para el encabezado.' : 'Adjunta un video para el encabezado.');
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      const form = new FormData();
+      form.append('name', plantillaActual.name);
+      form.append('language', plantillaActual.language);
+      form.append('bodyParams', JSON.stringify(valoresPlantilla));
+      form.append('consentimientoConfirmado', 'true');
+      if (archivoPlantilla) form.append('file', archivoPlantilla);
+      const { data } = await http.post(
+        `/empresas/${empresaId}/whatsapp/conversaciones/${convId}/plantillas`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+      );
+      if (data?.waStatus === 'FALLIDO') {
+        setError(data.errorDetalle || 'Meta no pudo entregar la plantilla al cliente.');
+      }
+      setPlantillaModalAbierto(false);
+      setTexto('');
+      setArchivo(null);
+      await Promise.all([cargarDetalle(convId), cargarConversaciones()]);
+    } catch (e) {
+      const err = e as AxiosError<any>;
+      setError(err.response?.data?.message ?? 'No se pudo enviar la plantilla.');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
   const handleCerrar = async () => {
     if (!empresaId || !convId) return;
     try {
@@ -207,6 +334,11 @@ export default function WhatsAppPage() {
           <p className="page-subtitle mb-0">Atiende conversaciones de clientes transferidas por la IA.</p>
         </div>
         <div className="d-flex gap-2">
+          {rol === 'ADMIN' && (
+            <Link href="/whatsapp/plantillas" className="btn btn-sm btn-outline-primary">
+              <i className="bi bi-card-text me-1" />Plantillas
+            </Link>
+          )}
           <input
             type="text"
             className="form-control form-control-sm"
@@ -391,6 +523,16 @@ export default function WhatsAppPage() {
                 <div className="wa-composer">
                   {puedeEnviarMedios && (
                     <>
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-sm text-nowrap"
+                        onClick={handleAbrirPlantillas}
+                        disabled={enviando || cargandoPlantillas || detalle.estado === 'CERRADA'}
+                        title="Enviar una plantilla aprobada por Meta"
+                      >
+                        {cargandoPlantillas ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-card-text me-1" />}
+                        <span className="d-none d-md-inline">Plantilla</span>
+                      </button>
                       <input
                         ref={archivoInputRef}
                         type="file"
@@ -449,6 +591,135 @@ export default function WhatsAppPage() {
           </div>
         </div>
       </div>
+
+      {plantillaModalAbierto && (
+        <div
+          className="modal d-block"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="wa-template-title"
+          style={{ background: 'rgba(15, 23, 42, .55)', zIndex: 1060 }}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h2 className="modal-title fs-5" id="wa-template-title">Enviar plantilla aprobada</h2>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="Cerrar"
+                  onClick={() => setPlantillaModalAbierto(false)}
+                  disabled={enviando}
+                />
+              </div>
+              <div className="modal-body">
+                <label className="form-label" htmlFor="wa-approved-template">Plantilla</label>
+                <select
+                  id="wa-approved-template"
+                  className="form-select mb-3"
+                  value={plantillaSeleccionada}
+                  onChange={(e) => handleSeleccionarPlantilla(e.target.value)}
+                >
+                  <option value="">Selecciona una plantilla aprobada</option>
+                  {plantillasAprobadas.map((item) => (
+                    <option key={`${item.name}|${item.language}`} value={`${item.name}|${item.language}`}>
+                      {item.name} · {item.language} · {item.category}
+                    </option>
+                  ))}
+                </select>
+
+                {plantillaActual && (
+                  <>
+                    <div className="alert alert-light border small">
+                      <strong>Vista previa:</strong>
+                      <div className="mt-1">{cuerpoPlantilla}</div>
+                      {headerActual === 'IMAGE' && <div className="text-muted mt-1">Encabezado con imagen</div>}
+                      {headerActual === 'VIDEO' && <div className="text-muted mt-1">Encabezado con video</div>}
+                    </div>
+
+                    {Array.from({ length: cantidadVariables }, (_, index) => (
+                      <div className="mb-2" key={`template-param-${index}`}>
+                        <label className="form-label" htmlFor={`template-param-${index}`}>
+                          Valor para {'{{'}{index + 1}{'}}'}
+                        </label>
+                        <input
+                          id={`template-param-${index}`}
+                          className="form-control"
+                          value={valoresPlantilla[index] ?? ''}
+                          onChange={(e) => setValoresPlantilla((actual) => actual.map((value, i) => i === index ? e.target.value : value))}
+                          maxLength={1024}
+                          required
+                        />
+                      </div>
+                    ))}
+
+                    {(headerActual === 'IMAGE' || headerActual === 'VIDEO') && (
+                      <div className="mb-3">
+                        <label className="form-label" htmlFor="wa-template-media">
+                          {headerActual === 'IMAGE' ? 'Imagen para este cliente (JPG/PNG, máx. 5 MB)' : 'Video para este cliente (MP4, máx. 16 MB)'}
+                        </label>
+                        <input
+                          ref={archivoPlantillaRef}
+                          id="wa-template-media"
+                          type="file"
+                          className="form-control"
+                          accept={headerActual === 'IMAGE' ? 'image/jpeg,image/png' : 'video/mp4'}
+                          onChange={(e) => {
+                            handleSeleccionarArchivoPlantilla(e.target.files?.[0]);
+                            e.currentTarget.value = '';
+                          }}
+                        />
+                        {archivoPlantilla && <div className="form-text">{archivoPlantilla.name}</div>}
+                      </div>
+                    )}
+
+                    <div className="form-check mb-2">
+                      <input
+                        id="wa-template-consent"
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={consentimientoConfirmado}
+                        onChange={(e) => setConsentimientoConfirmado(e.target.checked)}
+                      />
+                      <label className="form-check-label small" htmlFor="wa-template-consent">
+                        Confirmo que el cliente autorizó recibir mensajes de WhatsApp de la empresa.
+                      </label>
+                    </div>
+                    <p className="form-text mb-0">
+                      Meta puede cobrar por estos mensajes según la categoría y el país del destinatario.
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => setPlantillaModalAbierto(false)}
+                  disabled={enviando}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleEnviarPlantilla}
+                  disabled={
+                    enviando ||
+                    !plantillaActual ||
+                    !consentimientoConfirmado ||
+                    valoresPlantilla.some((value) => !value.trim()) ||
+                    ((headerActual === 'IMAGE' || headerActual === 'VIDEO') && !archivoPlantilla)
+                  }
+                >
+                  {enviando && <span className="spinner-border spinner-border-sm me-2" />}
+                  Enviar plantilla
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

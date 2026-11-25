@@ -32,6 +32,7 @@ const menu: MenuGroup[] = [
     section: 'Marketing',
     items: [
       { label: 'Campañas', href: '/campanas', icon: 'bi-megaphone', roles: ['ADMIN'] },
+      { label: 'Plantillas WhatsApp', href: '/whatsapp/plantillas', icon: 'bi-chat-square-text', roles: ['ADMIN'] },
     ],
   },
   {
