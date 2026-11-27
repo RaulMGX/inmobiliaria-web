@@ -48,7 +48,7 @@ body {
   background: rgba(255,255,255,.12);
   color: #f39200;
 }
-.crm-sidebar .nav { padding: .75rem; flex: 1 1 auto; overflow-y: auto; }
+.crm-sidebar .nav { padding: .75rem; flex: 1 1 auto; overflow-y: auto; flex-wrap: nowrap; }
 .crm-sidebar .nav-item + .nav-item { margin-top: .15rem; }
 .crm-sidebar .nav-link {
   color: rgba(255,255,255,.82);
