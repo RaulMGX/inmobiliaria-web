@@ -242,7 +242,39 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   $queryRaw<T = any>(...args: any[]): Promise<T> { return (this.#scoped as any).$queryRaw(...args); }
   $queryRawUnsafe<T = any>(...args: any[]): Promise<T> { return (this.#scoped as any).$queryRawUnsafe(...args); }
 
-  async onModuleInit() { await this.$connect(); }
+  async onModuleInit() {
+    await this.$connect();
+    await this.#aplicarMigracionPipeline();
+  }
+
+  async #aplicarMigracionPipeline() {
+    const sql = `
+DO $$ BEGIN
+  CREATE TYPE "OrigenLead" AS ENUM ('WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'PAGINA_WEB', 'REFERIDO', 'CAMINATA', 'LLAMADA', 'OTRO');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+ALTER TABLE "pipelines_comerciales" ADD COLUMN IF NOT EXISTS "monto_estimado" DECIMAL(14,2);
+ALTER TABLE "pipelines_comerciales" ADD COLUMN IF NOT EXISTS "origen" "OrigenLead" DEFAULT 'OTRO';
+ALTER TABLE "pipelines_comerciales" ADD COLUMN IF NOT EXISTS "presupuesto_maximo" DECIMAL(14,2);
+ALTER TABLE "pipelines_comerciales" ADD COLUMN IF NOT EXISTS "zona_interes" VARCHAR(150);
+ALTER TABLE "pipelines_comerciales" ADD COLUMN IF NOT EXISTS "tipo_propiedad_interes" "TipoPropiedad";
+ALTER TABLE "pipelines_comerciales" ADD COLUMN IF NOT EXISTS "propiedad_id" TEXT;
+
+CREATE INDEX IF NOT EXISTS "pipelines_comerciales_propiedad_id_idx" ON "pipelines_comerciales"("propiedad_id");
+CREATE INDEX IF NOT EXISTS "pipelines_comerciales_origen_idx" ON "pipelines_comerciales"("origen");
+
+DO $$ BEGIN
+  ALTER TABLE "pipelines_comerciales" ADD CONSTRAINT "pipelines_comerciales_propiedad_id_fkey" FOREIGN KEY ("propiedad_id") REFERENCES "propiedades"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+`;
+    try {
+      await (this.#scoped as any).$executeRawUnsafe(sql);
+    } catch (e: any) {
+      // La migracion es idempotente; si falla por columnas ya existentes se ignora.
+      console.warn('[migracion-pipeline]', e?.message ?? e);
+    }
+  }
+
   async onModuleDestroy() { await this.$disconnect(); }
 }
 
