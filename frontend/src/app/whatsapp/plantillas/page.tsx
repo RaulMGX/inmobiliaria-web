@@ -101,7 +101,7 @@ export default function PlantillasWhatsAppPage() {
     setError(null);
     setAviso(null);
 
-    if (cantidadVariables !== ejemplos.length) {
+    if (cantidadVariables > 0 && cantidadVariables !== ejemplos.length) {
       setError(`Escribe un ejemplo por línea para cada variable. Se necesitan ${cantidadVariables}.`);
       return;
     }
