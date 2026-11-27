@@ -10,9 +10,14 @@ import {
   CreatePipelineInput,
   ETAPAS_PIPELINE,
   EtapaPipeline,
+  ORIGEN_LEAD,
+  OrigenLead,
   PipelineOportunidad,
   PRIORIDADES_PIPELINE,
   PrioridadPipeline,
+  PropiedadLight,
+  TIPO_PROPIEDAD,
+  TipoPropiedad,
   UpdatePipelineInput,
 } from '@/lib/pipeline';
 
@@ -36,6 +41,7 @@ export default function PipelineModal({
   initial,
   clientes,
   asesores,
+  propiedades,
   onClose,
   onSaved,
   onNewRef,
@@ -45,6 +51,7 @@ export default function PipelineModal({
   initial: PipelineOportunidad | null;
   clientes: ClienteLight[];
   asesores: AsesorLight[];
+  propiedades: PropiedadLight[];
   onClose: () => void;
   onSaved: (p: PipelineOportunidad, mode: Mode) => void;
   onNewRef: (kind: 'cliente' | 'asesor', ref: { id: string; nombres: string; apellidos: string; correo?: string; celular?: string }) => void;
@@ -72,12 +79,18 @@ export default function PipelineModal({
     return {
       clienteId: defaultCliente?.id || '',
       asesorId: asesorActual?.id || asesores[0]?.id || yo?.id || '',
+      propiedadId: null,
       etapa: 'NUEVO',
       prioridad: 'MEDIA',
       probabilidadCierre: 10,
       fechaIngreso: new Date().toISOString(),
       fechaUltimoSeguimiento: null,
       proximaFechaSeguimiento: null,
+      montoEstimado: null,
+      origen: 'OTRO',
+      presupuestoMaximo: null,
+      zonaInteres: null,
+      tipoPropiedadInteres: null,
       motivoPerdida: null,
       observaciones: null,
     };
@@ -155,12 +168,18 @@ export default function PipelineModal({
       setForm({
         clienteId: initial.clienteId,
         asesorId: initial.asesorId,
+        propiedadId: initial.propiedadId ?? null,
         etapa: initial.etapa,
         prioridad: initial.prioridad,
         probabilidadCierre: initial.probabilidadCierre,
         fechaIngreso: initial.fechaIngreso,
         fechaUltimoSeguimiento: initial.fechaUltimoSeguimiento,
         proximaFechaSeguimiento: initial.proximaFechaSeguimiento,
+        montoEstimado: initial.montoEstimado ?? null,
+        origen: initial.origen ?? 'OTRO',
+        presupuestoMaximo: initial.presupuestoMaximo ?? null,
+        zonaInteres: initial.zonaInteres ?? null,
+        tipoPropiedadInteres: initial.tipoPropiedadInteres ?? null,
         motivoPerdida: initial.motivoPerdida,
         observaciones: initial.observaciones,
       });
@@ -381,6 +400,93 @@ export default function PipelineModal({
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label small fw-semibold">
+                  <i className="bi bi-house-door me-1 text-primary" /> Propiedad de interés
+                </label>
+                <select
+                  className="form-select"
+                  value={form.propiedadId || ''}
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    const prop = propiedades.find((p) => p.id === pid);
+                    setField('propiedadId', pid || null);
+                    if (prop && !form.montoEstimado) {
+                      setField('montoEstimado', Number(prop.precio) || null);
+                    }
+                  }}
+                >
+                  <option value="">-- Sin propiedad asociada --</option>
+                  {propiedades.length === 0 && <option value="" disabled>⚠️ No hay propiedades cargadas</option>}
+                  {propiedades.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre} {p.distrito ? `· ${p.distrito}` : ''} · S/ {Number(p.precio).toLocaleString('es-PE', { maximumFractionDigits: 0 })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-6 col-md-3">
+                <label className="form-label small fw-semibold">
+                  <i className="bi bi-geo-alt me-1 text-success" /> Origen del lead
+                </label>
+                <select className="form-select" value={form.origen || ''} onChange={(e) => setField('origen', (e.target.value as OrigenLead) || null)}>
+                  <option value="">-- Selecciona --</option>
+                  {ORIGEN_LEAD.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
+              </div>
+
+              <div className="col-6 col-md-3">
+                <label className="form-label small fw-semibold">
+                  <i className="bi bi-cash-stack me-1 text-warning" /> Monto estimado (S/)
+                </label>
+                <input
+                  type="number"
+                  className="form-control"
+                  min={0}
+                  value={form.montoEstimado ?? ''}
+                  onChange={(e) => setField('montoEstimado', e.target.value ? Number(e.target.value) : null)}
+                  placeholder="Ej. 250000"
+                />
+              </div>
+
+              <div className="col-6 col-md-3">
+                <label className="form-label small fw-semibold">
+                  <i className="bi bi-wallet2 me-1 text-info" /> Presupuesto cliente (S/)
+                </label>
+                <input
+                  type="number"
+                  className="form-control"
+                  min={0}
+                  value={form.presupuestoMaximo ?? ''}
+                  onChange={(e) => setField('presupuestoMaximo', e.target.value ? Number(e.target.value) : null)}
+                  placeholder="Ej. 300000"
+                />
+              </div>
+
+              <div className="col-6 col-md-3">
+                <label className="form-label small fw-semibold">
+                  <i className="bi bi-geo me-1 text-danger" /> Zona de interés
+                </label>
+                <input
+                  className="form-control"
+                  maxLength={150}
+                  value={form.zonaInteres || ''}
+                  onChange={(e) => setField('zonaInteres', e.target.value || null)}
+                  placeholder="Ej. Miraflores"
+                />
+              </div>
+
+              <div className="col-6 col-md-3">
+                <label className="form-label small fw-semibold">
+                  <i className="bi bi-building me-1 text-purple" /> Tipo propiedad
+                </label>
+                <select className="form-select" value={form.tipoPropiedadInteres || ''} onChange={(e) => setField('tipoPropiedadInteres', (e.target.value as TipoPropiedad) || null)}>
+                  <option value="">-- Cualquiera --</option>
+                  {TIPO_PROPIEDAD.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
               </div>
 
               <div className="col-6 col-md-3">

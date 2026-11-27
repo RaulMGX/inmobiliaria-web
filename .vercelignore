@@ -1,0 +1,14 @@
+node_modules
+build
+dist
+.git
+.trae
+.log
+.figma
+backend/
+.env*
+**/.env*
+*.local
+**/*.local
+debug-whatsapp-ai-no-reply.md
+render.yaml

@@ -2,9 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
+  IsDecimal,
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -13,7 +15,9 @@ import {
 } from 'class-validator';
 import {
   EtapaPipelineComercial,
+  OrigenLead,
   PrioridadPipelineComercial,
+  TipoPropiedad,
 } from '../../../infrastructure/database/prisma/generated/enums';
 
 export class CreatePipelineDto {
@@ -26,6 +30,11 @@ export class CreatePipelineDto {
   @IsString()
   @IsNotEmpty()
   asesorId!: string;
+
+  @ApiPropertyOptional({ example: 'cm123propiedad' })
+  @IsOptional()
+  @IsString()
+  propiedadId?: string;
 
   @ApiPropertyOptional({ enum: EtapaPipelineComercial })
   @IsOptional()
@@ -59,6 +68,36 @@ export class CreatePipelineDto {
   @Min(0)
   @Max(100)
   probabilidadCierre?: number;
+
+  @ApiPropertyOptional({ example: 250000.0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  montoEstimado?: number;
+
+  @ApiPropertyOptional({ enum: OrigenLead })
+  @IsOptional()
+  @IsEnum(OrigenLead)
+  origen?: string;
+
+  @ApiPropertyOptional({ example: 300000.0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  presupuestoMaximo?: number;
+
+  @ApiPropertyOptional({ example: 'Miraflores' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  zonaInteres?: string;
+
+  @ApiPropertyOptional({ enum: TipoPropiedad })
+  @IsOptional()
+  @IsEnum(TipoPropiedad)
+  tipoPropiedadInteres?: string;
 
   @ApiPropertyOptional({ example: 'El cliente no califica para crédito.' })
   @IsOptional()

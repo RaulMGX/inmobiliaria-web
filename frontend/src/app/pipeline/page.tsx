@@ -14,11 +14,14 @@ import {
   ETAPA_COLOR,
   EtapaPipeline,
   FindPipelineQuery,
+  ORIGEN_LEAD,
+  OrigenLead,
   Paginated,
   PipelineOportunidad,
   PRIORIDAD_COLOR,
   PRIORIDADES_PIPELINE,
   PrioridadPipeline,
+  PropiedadLight,
 } from '@/lib/pipeline';
 
 export default function PipelinePage() {
@@ -31,8 +34,10 @@ export default function PipelinePage() {
     search: '',
     etapa: '',
     prioridad: '',
+    origen: '',
     clienteId: '',
     asesorId: '',
+    propiedadId: '',
     vencidas: '',
     sortBy: 'proximaFechaSeguimiento',
     sortDirection: 'asc',
@@ -52,6 +57,7 @@ export default function PipelinePage() {
     : null;
   const [clientes, setClientes] = useState<ClienteLight[]>([]);
   const [asesores, setAsesores] = useState<AsesorLight[]>(yoAsesor ? [yoAsesor] : []);
+  const [propiedades, setPropiedades] = useState<PropiedadLight[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
@@ -92,6 +98,11 @@ export default function PipelinePage() {
         data.data.forEach((p) => { if (p.asesor) m.set(p.asesor.id, p.asesor); });
         return Array.from(m.values());
       });
+      setPropiedades((prev) => {
+        const m = new Map(prev.map((pr) => [pr.id, pr]));
+        data.data.forEach((p) => { if (p.propiedad) m.set(p.propiedad.id, p.propiedad); });
+        return Array.from(m.values());
+      });
     } catch (e) {
       const err = e as AxiosError<any>;
       setError(err.response?.data?.message ?? 'No se pudo cargar el pipeline comercial.');
@@ -104,9 +115,10 @@ export default function PipelinePage() {
     if (!empresaId) return;
     (async () => {
       try {
-        const [resCli, resUsr] = await Promise.allSettled([
+        const [resCli, resUsr, resProp] = await Promise.allSettled([
           http.get<any>(`/empresas/${empresaId}/clientes`, { params: { page: 1, limit: 100 } }),
           http.get<any>(`/empresas/${empresaId}/usuarios`, { params: { page: 1, limit: 100 } }),
+          http.get<any>(`/empresas/${empresaId}/propiedades`, { params: { page: 1, limit: 200, active: true } }),
         ]);
         if (resCli.status === 'fulfilled') {
           const listCli = (resCli.value.data?.data ?? resCli.value.data ?? []) as any[];
@@ -128,6 +140,28 @@ export default function PipelinePage() {
           }
           return Array.from(m.values());
         });
+        if (resProp.status === 'fulfilled') {
+          const listProp = (resProp.value.data?.data ?? resProp.value.data ?? []) as any[];
+          setPropiedades((prev) => {
+            const m = new Map(prev.map((pr) => [pr.id, pr]));
+            listProp.forEach((pr: any) => {
+              if (!pr?.id) return;
+              m.set(pr.id, {
+                id: pr.id,
+                codigoInterno: pr.codigoInterno || '',
+                nombre: pr.nombre || '',
+                tipoPropiedad: pr.tipoPropiedad || 'OTRO',
+                estado: pr.estado || 'DISPONIBLE',
+                precio: pr.precio || 0,
+                distrito: pr.distrito || null,
+                ciudad: pr.ciudad || null,
+                habitaciones: pr.habitaciones ?? null,
+                banos: pr.banos ?? null,
+              } as PropiedadLight);
+            });
+            return Array.from(m.values());
+          });
+        }
       } catch {
         /* ignore */
       }
@@ -138,7 +172,7 @@ export default function PipelinePage() {
   useEffect(() => {
     fetchPage(filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.page, filters.limit, filters.etapa, filters.prioridad, filters.clienteId, filters.asesorId, filters.vencidas, filters.sortBy, filters.sortDirection]);
+  }, [filters.page, filters.limit, filters.etapa, filters.prioridad, filters.origen, filters.clienteId, filters.asesorId, filters.propiedadId, filters.vencidas, filters.sortBy, filters.sortDirection]);
 
   useEffect(() => {
     if (!searchRef.current) return;
@@ -212,7 +246,10 @@ export default function PipelinePage() {
   }, [list]);
 
   const totalOport = list.length;
-  const totalMontoEstimado = list.reduce((acc, p) => acc + (Number(p.probabilidadCierre || 0) * (1 + p.id.length % 3)), 0);
+  const totalMontoEstimado = list.reduce(
+    (acc, p) => acc + (Number(p.montoEstimado) || (p.propiedad ? Number(p.propiedad.precio) || 0 : 0)),
+    0,
+  );
 
   return (
     <AppLayout>
@@ -225,7 +262,7 @@ export default function PipelinePage() {
         </div>
         <div className="d-flex gap-2 align-items-center flex-wrap">
           <div className="text-muted small">
-            Total oportunidades: <strong>{meta?.total ?? totalOport}</strong> · Página {meta?.page ?? 1}/{meta?.totalPages ?? 1}
+            Total oportunidades: <strong>{meta?.total ?? totalOport}</strong> · Monto estimado: <strong className="text-primary">S/ {totalMontoEstimado.toLocaleString('es-PE', { maximumFractionDigits: 0 })}</strong> · Página {meta?.page ?? 1}/{meta?.totalPages ?? 1}
           </div>
           <div className="btn-group btn-group-sm" role="group" aria-label="Vista">
             <button
@@ -301,6 +338,17 @@ export default function PipelinePage() {
                 {PRIORIDADES_PIPELINE.map((p) => <option key={p} value={p}>{humanizeToken(p)}</option>)}
               </select>
             </div>
+            <div className="col-6 col-md-3 col-lg-2">
+              <label className="form-label small fw-semibold">Origen</label>
+              <select
+                className="form-select"
+                value={filters.origen || ''}
+                onChange={(e) => setFilters((f) => ({ ...f, page: 1, origen: (e.target.value as OrigenLead) || '' }))}
+              >
+                <option value="">Todos</option>
+                {ORIGEN_LEAD.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+            </div>
             <div className="col-6 col-md-4 col-lg-2">
               <label className="form-label small fw-semibold">Cliente</label>
               <select
@@ -347,6 +395,7 @@ export default function PipelinePage() {
                 <option value="fechaIngreso">Ingreso</option>
                 <option value="proximaFechaSeguimiento">Próx. seguimiento</option>
                 <option value="probabilidadCierre">Probabilidad</option>
+                <option value="montoEstimado">Monto estimado</option>
                 <option value="etapa">Etapa</option>
                 <option value="prioridad">Prioridad</option>
               </select>
@@ -365,8 +414,8 @@ export default function PipelinePage() {
               <button
                 className="btn btn-outline-secondary w-100"
                 onClick={() => setFilters({
-                  page: 1, limit: 50, search: '', etapa: '', prioridad: '',
-                  clienteId: '', asesorId: '', vencidas: '',
+                  page: 1, limit: 50, search: '', etapa: '', prioridad: '', origen: '',
+                  clienteId: '', asesorId: '', propiedadId: '', vencidas: '',
                   sortBy: 'proximaFechaSeguimiento', sortDirection: 'asc',
                 })}
               >
@@ -421,6 +470,10 @@ export default function PipelinePage() {
           {ETAPAS_PIPELINE.map((etapa) => {
             const items = grouped[etapa] || [];
             const prob = items.reduce((a, b) => a + (Number(b.probabilidadCierre || 0)), 0);
+            const montoEtapa = items.reduce(
+              (a, b) => a + (Number(b.montoEstimado) || (b.propiedad ? Number(b.propiedad.precio) || 0 : 0)),
+              0,
+            );
             const collapsed = !!collapsedEtapas[etapa];
             return (
               <div
@@ -444,9 +497,8 @@ export default function PipelinePage() {
                     </span>
                   </button>
                   {!collapsed && (
-                    <span className="pipeline-col-prob" title="Σ Probabilidad cierre">
-                      <strong>{prob}</strong>
-                      <span>pts</span>
+                    <span className="pipeline-col-prob" title="Monto estimado de la etapa">
+                      <strong>S/ {montoEtapa.toLocaleString('es-PE', { maximumFractionDigits: 0 })}</strong>
                     </span>
                   )}
                 </div>
@@ -488,6 +540,7 @@ export default function PipelinePage() {
         initial={editTarget}
         clientes={clientes}
         asesores={asesores}
+        propiedades={propiedades}
         onClose={() => setModalOpen(false)}
         onSaved={onSaved}
         onNewRef={onNewRef}
@@ -534,6 +587,14 @@ function KanbanCard({
             <span className="badge" style={{ background: PRIORIDAD_COLOR[p.prioridad] + '22', color: PRIORIDAD_COLOR[p.prioridad], fontSize: '.65rem' }}>
               {humanizeToken(p.prioridad)}
             </span>
+            {p.origen && (() => {
+              const o = ORIGEN_LEAD.find((x) => x.key === p.origen);
+              return o ? (
+                <span className="badge" style={{ background: o.color + '22', color: o.color, fontSize: '.65rem' }} title={`Origen: ${o.label}`}>
+                  <i className={`bi ${o.icon}`} />
+                </span>
+              ) : null;
+            })()}
             {vencida && <span className="badge badge-soft-danger" style={{ fontSize: '.65rem' }}>Vencida</span>}
             <div className="dropdown ms-auto">
               <button className="btn btn-white btn-sm shadow-none px-2 py-0 border-0 text-muted" data-bs-toggle="dropdown" aria-expanded="false">
@@ -601,6 +662,14 @@ function KanbanCard({
                 <span className="badge" style={{ background: PRIORIDAD_COLOR[p.prioridad] + '22', color: PRIORIDAD_COLOR[p.prioridad], fontSize: '.7rem' }}>
                   <i className="bi bi-flag me-1" />{humanizeToken(p.prioridad)}
                 </span>
+                {p.origen && (() => {
+                  const o = ORIGEN_LEAD.find((x) => x.key === p.origen);
+                  return o ? (
+                    <span className="badge" style={{ background: o.color + '22', color: o.color, fontSize: '.7rem' }} title={`Origen: ${o.label}`}>
+                      <i className={`bi ${o.icon} me-1`} />{o.label}
+                    </span>
+                  ) : null;
+                })()}
                 {vencida && (
                   <span className="badge badge-soft-danger" style={{ fontSize: '.7rem' }}>
                     <i className="bi bi-clock-history me-1" />Vencida
@@ -610,6 +679,22 @@ function KanbanCard({
               <div className="k-title mt-2">
                 {p.cliente?.nombres} {p.cliente?.apellidos}
               </div>
+              {p.propiedad && (
+                <div className="k-propiedad mt-1">
+                  <i className="bi bi-house-door text-primary" />
+                  <span className="fw-semibold">{p.propiedad.nombre}</span>
+                  {p.propiedad.distrito && <span className="text-muted"> · {p.propiedad.distrito}</span>}
+                  <span className="text-primary fw-bold ms-1">
+                    S/ {Number(p.propiedad.precio).toLocaleString('es-PE', { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              )}
+              {!p.propiedad && p.montoEstimado && (
+                <div className="k-propiedad mt-1">
+                  <i className="bi bi-cash-stack text-success" />
+                  <span className="text-success fw-bold">S/ {Number(p.montoEstimado).toLocaleString('es-PE', { maximumFractionDigits: 0 })}</span>
+                </div>
+              )}
               <div className="k-sub">
                 Ingreso: {formatDate(p.fechaIngreso)}
               </div>
@@ -681,12 +766,42 @@ function KanbanCard({
           <div className="k-prob" title={`Probabilidad ${p.probabilidadCierre}%`}>
             <div style={{ width: `${p.probabilidadCierre || 0}%` }} />
           </div>
-          <div className="d-flex align-items-center justify-content-between small text-muted">
+          <div className="d-flex align-items-center justify-content-between small text-muted mb-2">
             <span>Prob. cierre <strong className="text-dark">{p.probabilidadCierre}%</strong></span>
             <span>
               <i className="bi bi-calendar-event me-1" />
               {p.proximaFechaSeguimiento ? formatDate(p.proximaFechaSeguimiento) : 'Sin próximo'}
             </span>
+          </div>
+          <div className="d-flex gap-1 flex-wrap">
+            {p.cliente?.celular && (
+              <a
+                href={`https://wa.me/${String(p.cliente.celular).replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-sm btn-outline-success py-0 px-2"
+                title="Enviar WhatsApp"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <i className="bi bi-whatsapp me-1" />WhatsApp
+              </a>
+            )}
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary py-0 px-2"
+              title="Agendar visita"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            >
+              <i className="bi bi-calendar-plus me-1" />Visita
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary py-0 px-2"
+              title="Editar"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            >
+              <i className="bi bi-pencil" />
+            </button>
           </div>
         </>
       )}

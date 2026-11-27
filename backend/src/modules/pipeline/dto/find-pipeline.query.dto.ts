@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import {
   EtapaPipelineComercial,
+  OrigenLead,
   PrioridadPipelineComercial,
 } from '../../../infrastructure/database/prisma/generated/enums';
 
@@ -20,6 +21,7 @@ export const PipelineSortBy = {
   fechaIngreso: 'fechaIngreso',
   proximaFechaSeguimiento: 'proximaFechaSeguimiento',
   probabilidadCierre: 'probabilidadCierre',
+  montoEstimado: 'montoEstimado',
   etapa: 'etapa',
   prioridad: 'prioridad',
 } as const;
@@ -64,6 +66,11 @@ export class FindPipelineQueryDto {
   @IsEnum(PrioridadPipelineComercial)
   prioridad?: string;
 
+  @ApiPropertyOptional({ enum: OrigenLead })
+  @IsOptional()
+  @IsEnum(OrigenLead)
+  origen?: string;
+
   @ApiPropertyOptional({ example: 'cm123cliente' })
   @IsOptional()
   @IsString()
@@ -73,6 +80,11 @@ export class FindPipelineQueryDto {
   @IsOptional()
   @IsString()
   asesorId?: string;
+
+  @ApiPropertyOptional({ example: 'cm123propiedad' })
+  @IsOptional()
+  @IsString()
+  propiedadId?: string;
 
   @ApiPropertyOptional({
     example: true,

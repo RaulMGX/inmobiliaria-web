@@ -18,6 +18,9 @@ export class PipelineService {
     await Promise.all([
       this.ensureClienteDisponible(empresaId, dto.clienteId),
       this.ensureAsesorDisponible(empresaId, dto.asesorId),
+      dto.propiedadId
+        ? this.ensurePropiedadDisponible(empresaId, dto.propiedadId)
+        : Promise.resolve(),
     ]);
 
     return this.prisma.pipelineComercial.create({
@@ -100,6 +103,10 @@ export class PipelineService {
       await this.ensureAsesorDisponible(empresaId, dto.asesorId);
     }
 
+    if (dto.propiedadId) {
+      await this.ensurePropiedadDisponible(empresaId, dto.propiedadId);
+    }
+
     return this.prisma.pipelineComercial.update({
       where: { id },
       data: this.buildUpdateData(dto),
@@ -150,8 +157,10 @@ export class PipelineService {
       deletedAt: null,
       ...(query.etapa ? { etapa: query.etapa as any } : {}),
       ...(query.prioridad ? { prioridad: query.prioridad as any } : {}),
+      ...(query.origen ? { origen: query.origen as any } : {}),
       ...(query.clienteId ? { clienteId: query.clienteId } : {}),
       ...(query.asesorId ? { asesorId: query.asesorId } : {}),
+      ...(query.propiedadId ? { propiedadId: query.propiedadId } : {}),
       ...(query.vencidas === true
         ? {
             proximaFechaSeguimiento: {
@@ -204,6 +213,17 @@ export class PipelineService {
                   },
                   { motivoPerdida: containsPipeline(search) },
                   { observaciones: containsPipeline(search) },
+                  { zonaInteres: containsPipeline(search) },
+                  {
+                    propiedad: {
+                      nombre: containsPipeline(search),
+                    },
+                  },
+                  {
+                    propiedad: {
+                      codigoInterno: containsPipeline(search),
+                    },
+                  },
                 ],
               },
             ],
@@ -244,6 +264,9 @@ export class PipelineService {
 
   private normalizePayload(dto: Partial<CreatePipelineDto>) {
     return {
+      ...(dto.propiedadId !== undefined
+        ? { propiedadId: dto.propiedadId || null }
+        : {}),
       ...(dto.etapa !== undefined ? { etapa: dto.etapa as any } : {}),
       ...(dto.fechaIngreso !== undefined
         ? { fechaIngreso: dto.fechaIngreso ? new Date(dto.fechaIngreso) : undefined }
@@ -265,6 +288,19 @@ export class PipelineService {
       ...(dto.prioridad !== undefined ? { prioridad: dto.prioridad as any } : {}),
       ...(dto.probabilidadCierre !== undefined
         ? { probabilidadCierre: dto.probabilidadCierre }
+        : {}),
+      ...(dto.montoEstimado !== undefined
+        ? { montoEstimado: dto.montoEstimado ?? null }
+        : {}),
+      ...(dto.origen !== undefined ? { origen: (dto.origen as any) ?? null } : {}),
+      ...(dto.presupuestoMaximo !== undefined
+        ? { presupuestoMaximo: dto.presupuestoMaximo ?? null }
+        : {}),
+      ...(dto.zonaInteres !== undefined
+        ? { zonaInteres: dto.zonaInteres?.trim() || null }
+        : {}),
+      ...(dto.tipoPropiedadInteres !== undefined
+        ? { tipoPropiedadInteres: (dto.tipoPropiedadInteres as any) ?? null }
         : {}),
       ...(dto.motivoPerdida !== undefined
         ? { motivoPerdida: dto.motivoPerdida?.trim() || null }
@@ -376,7 +412,42 @@ export class PipelineService {
           correo: true,
         },
       },
+      propiedad: {
+        select: {
+          id: true,
+          codigoInterno: true,
+          nombre: true,
+          tipoPropiedad: true,
+          estado: true,
+          precio: true,
+          distrito: true,
+          ciudad: true,
+          habitaciones: true,
+          banos: true,
+        },
+      },
     };
+  }
+
+  private async ensurePropiedadDisponible(
+    empresaId: string,
+    propiedadId: string,
+  ) {
+    const propiedad = await this.prisma.propiedad.findFirst({
+      where: {
+        id: propiedadId,
+        proyecto: { empresaId },
+        active: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!propiedad) {
+      throw new NotFoundException(
+        'Propiedad no encontrada para la empresa indicada.',
+      );
+    }
   }
 }
 

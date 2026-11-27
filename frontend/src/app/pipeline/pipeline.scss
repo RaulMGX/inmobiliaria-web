@@ -231,6 +231,16 @@
   color: #6b7280;
   margin-top: .15rem;
 }
+.kanban-card .k-propiedad {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .78rem;
+  flex-wrap: wrap;
+}
+.kanban-card .k-propiedad i {
+  font-size: .85rem;
+}
 .kanban-card .k-body {
   display: flex;
   flex-direction: column;
