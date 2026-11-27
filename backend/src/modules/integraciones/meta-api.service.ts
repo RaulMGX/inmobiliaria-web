@@ -51,6 +51,46 @@ export class MetaApiService {
     return this.config.get<string>('WHATSAPP_BUSINESS_ACCOUNT_ID') ?? '';
   }
 
+  /**
+   * Intenta resolver el WABA ID a partir del phone number ID o de candidatos conocidos.
+   * El ID del env puede ser el asset ID (no funciona para message_templates), así que
+   * probamos varios candidatos y verificamos cuál responde correctamente.
+   */
+  async resolverWabaId(phoneNumberId?: string): Promise<string> {
+    const candidatos = new Set<string>();
+    if (phoneNumberId) {
+      // Intentar resolver desde el phone number ID
+      const campos = ['whatsapp_business_account', 'account', 'business_account'];
+      for (const campo of campos) {
+        try {
+          const res: any = await this.solicitudGraph(
+            `${phoneNumberId}?fields=${campo}{id}`,
+            'GET',
+          );
+          const wabaId = res?.[campo]?.id;
+          if (wabaId) candidatos.add(wabaId);
+        } catch {
+          // el campo no existe en esta versión, seguimos probando
+        }
+      }
+    }
+    if (this.businessAccountId) candidatos.add(this.businessAccountId);
+    // Candidato confirmado desde Meta Business Suite (Dream House)
+    candidatos.add('3724202217731930');
+
+    // Probar cada candidato haciendo una petición a message_templates
+    for (const candidato of candidatos) {
+      try {
+        await this.solicitudGraph(`${candidato}/message_templates?limit=1`, 'GET');
+        this.logger.log(`WABA ID válido confirmado: ${candidato}`);
+        return candidato;
+      } catch {
+        this.logger.debug(`WABA ID ${candidato} no válido para message_templates`);
+      }
+    }
+    return this.businessAccountId;
+  }
+
   private get appId(): string {
     return this.config.get<string>('META_APP_ID') ?? '';
   }
@@ -246,8 +286,9 @@ export class MetaApiService {
     });
   }
 
-  async listarPlantillas(): Promise<PlantillaMeta[]> {
+  async listarPlantillas(phoneNumberId?: string): Promise<PlantillaMeta[]> {
     this.assertPlantillasConfiguradas();
+    const wabaId = await this.resolverWabaId(phoneNumberId);
     const plantillas: PlantillaMeta[] = [];
     let after: string | undefined;
 
@@ -260,7 +301,7 @@ export class MetaApiService {
       const response = await this.solicitudGraph<{
         data?: PlantillaMeta[];
         paging?: { cursors?: { after?: string }; next?: string };
-      }>(`${this.businessAccountId}/message_templates?${query.toString()}`, 'GET');
+      }>(`${wabaId}/message_templates?${query.toString()}`, 'GET');
       plantillas.push(...(response.data ?? []));
       if (!response.paging?.next || !response.paging.cursors?.after) break;
       after = response.paging.cursors.after;
@@ -278,8 +319,10 @@ export class MetaApiService {
       bodyExamples: string[];
     },
     headerHandle?: string,
+    phoneNumberId?: string,
   ) {
     this.assertPlantillasConfiguradas(plantilla.headerFormat !== 'NONE');
+    const wabaId = await this.resolverWabaId(phoneNumberId);
     const components: Record<string, unknown>[] = [];
     if (plantilla.headerFormat !== 'NONE') {
       if (!headerHandle) {
@@ -300,7 +343,7 @@ export class MetaApiService {
     }
     components.push(bodyComponent);
 
-    return this.solicitudGraph(`${this.businessAccountId}/message_templates`, 'POST', {
+    return this.solicitudGraph(`${wabaId}/message_templates`, 'POST', {
       name: plantilla.name,
       language: plantilla.language,
       category: plantilla.category,

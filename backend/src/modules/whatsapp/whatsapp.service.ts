@@ -1387,8 +1387,8 @@ export class WhatsappService {
 
   async listarPlantillas(empresaId: string, user: JwtPayload) {
     this.validarAccesoPlantillas(user);
-    await this.obtenerEmpresaPlantillas(empresaId);
-    return this.meta.listarPlantillas();
+    const empresa = await this.obtenerEmpresaPlantillas(empresaId);
+    return this.meta.listarPlantillas(empresa.waPhoneNumberId ?? undefined);
   }
 
   async crearPlantilla(
@@ -1405,7 +1405,7 @@ export class WhatsappService {
     headerSample?: ArchivoAdjunto,
   ) {
     this.validarAccesoPlantillas(user, true);
-    await this.obtenerEmpresaPlantillas(empresaId);
+    const empresa = await this.obtenerEmpresaPlantillas(empresaId);
 
     const name = String(input.name ?? '').trim();
     const language = String(input.language ?? '').trim();
@@ -1472,6 +1472,7 @@ export class WhatsappService {
         bodyExamples,
       },
       headerHandle,
+      empresa.waPhoneNumberId ?? undefined,
     );
   }
 
@@ -1523,7 +1524,7 @@ export class WhatsappService {
       throw new BadRequestException('Revisa los valores de las variables de la plantilla.');
     }
 
-    const plantillas = await this.meta.listarPlantillas();
+    const plantillas = await this.meta.listarPlantillas(empresa.waPhoneNumberId ?? undefined);
     const plantilla = plantillas.find(
       (item) => item.name === input.name && item.language === input.language,
     );
