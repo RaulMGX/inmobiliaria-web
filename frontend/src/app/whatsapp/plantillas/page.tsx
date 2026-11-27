@@ -223,6 +223,9 @@ export default function PlantillasWhatsAppPage() {
                   {plantillas.map((plantilla) => {
                     const body = plantilla.components.find((component) => component.type.toUpperCase() === 'BODY')?.text;
                     const header = plantilla.components.find((component) => component.type.toUpperCase() === 'HEADER');
+                    const headerFormat = header?.format?.toLowerCase();
+                    const headerIcono = headerFormat === 'video' ? 'play-circle' : headerFormat === 'image' ? 'image' : 'chat-left-text';
+                    const motivoRechazo = plantilla.rejected_reason && plantilla.rejected_reason !== 'NONE' ? plantilla.rejected_reason : null;
                     const estadoClase = plantilla.status === 'APPROVED'
                       ? 'text-bg-success'
                       : plantilla.status === 'REJECTED'
@@ -241,7 +244,7 @@ export default function PlantillasWhatsAppPage() {
                       <div key={`${plantilla.id}-${plantilla.language}`} className="border rounded p-3 h-100">
                         <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                           <strong className="d-flex align-items-center gap-2">
-                            <i className={`bi bi-${header?.format?.toLowerCase() === 'video' ? 'play-circle' : header?.format ? 'image' : 'chat-left-text'} text-primary`} />
+                            <i className={`bi bi-${headerIcono} text-primary`} />
                             {plantilla.name}
                           </strong>
                           <span className={`badge ${estadoClase} d-inline-flex align-items-center gap-1`}>
@@ -258,16 +261,16 @@ export default function PlantillasWhatsAppPage() {
                           {header?.format ? (
                             <>
                               <span className="mx-1">·</span>
-                              <i className={`bi bi-${header.format.toLowerCase() === 'video' ? 'play-circle' : 'image'}`} />
-                              Encabezado {header.format.toLowerCase()}
+                              <i className={`bi bi-${headerIcono}`} />
+                              Encabezado {headerFormat}
                             </>
                           ) : null}
                         </div>
                         {body && <div className="small mt-2 text-body-secondary bg-light rounded p-2">{body}</div>}
-                        {plantilla.rejected_reason && (
+                        {motivoRechazo && (
                           <div className="small text-danger mt-2 d-flex align-items-start gap-1">
                             <i className="bi bi-exclamation-circle mt-0.5" />
-                            <span>Motivo: {plantilla.rejected_reason}</span>
+                            <span>Motivo: {motivoRechazo}</span>
                           </div>
                         )}
                       </div>
