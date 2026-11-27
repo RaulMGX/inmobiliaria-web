@@ -151,55 +151,124 @@ export default function PlantillasWhatsAppPage() {
   return (
     <AppLayout>
       <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-        <div>
-          <h1 className="page-title mb-0">Plantillas de WhatsApp</h1>
-          <p className="page-subtitle mb-0">
-            Envía mensajes a revisión y consulta el estado que devuelve Meta.
-          </p>
+        <div className="d-flex align-items-center gap-2">
+          <div className="bg-success bg-opacity-10 text-success rounded-3 d-flex align-items-center justify-content-center" style={{ width: 44, height: 44 }}>
+            <i className="bi bi-whatsapp fs-4" />
+          </div>
+          <div>
+            <h1 className="page-title mb-0">Plantillas de WhatsApp</h1>
+            <p className="page-subtitle mb-0">
+              Envía mensajes a revisión y consulta el estado que devuelve Meta.
+            </p>
+          </div>
         </div>
-        <button className="btn btn-sm btn-outline-primary" onClick={cargarPlantillas} disabled={cargando}>
-          <i className="bi bi-arrow-repeat me-1" />Actualizar estados
+        <button className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1" onClick={cargarPlantillas} disabled={cargando}>
+          {cargando ? (
+            <span className="spinner-border spinner-border-sm" />
+          ) : (
+            <i className="bi bi-arrow-repeat" />
+          )}
+          Actualizar estados
         </button>
       </div>
 
-      <div className="alert alert-info small">
-        Meta revisa cada plantilla y decide si la aprueba o rechaza; el CRM no puede aprobarla por sí mismo.
-        Solo envía plantillas a clientes que aceptaron recibir mensajes. Meta puede cobrar por mensaje según
-        la categoría y el país del destinatario.
+      <div className="alert alert-info small d-flex align-items-start gap-2">
+        <i className="bi bi-info-circle-fill mt-0.5" />
+        <div>
+          Meta revisa cada plantilla y decide si la aprueba o rechaza; el CRM no puede aprobarla por sí mismo.
+          Solo envía plantillas a clientes que aceptaron recibir mensajes. Meta puede cobrar por mensaje según
+          la categoría y el país del destinatario.
+        </div>
       </div>
 
-      {error && <div className="alert alert-danger small">{error}</div>}
-      {aviso && <div className="alert alert-success small">{aviso}</div>}
+      {error && (
+        <div className="alert alert-danger small d-flex align-items-start gap-2">
+          <i className="bi bi-exclamation-triangle-fill mt-0.5" />
+          <div>{error}</div>
+        </div>
+      )}
+      {aviso && (
+        <div className="alert alert-success small d-flex align-items-start gap-2">
+          <i className="bi bi-check-circle-fill mt-0.5" />
+          <div>{aviso}</div>
+        </div>
+      )}
 
       <div className="row g-3">
         <div className="col-12 col-xl-7">
-          <div className="card border-0 shadow-sm">
-            <div className="card-header bg-white fw-semibold">Plantillas de la cuenta WhatsApp</div>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+              <i className="bi bi-collection text-primary" />
+              Plantillas de la cuenta WhatsApp
+              <span className="badge bg-secondary-subtle text-secondary-emphasis ms-auto">
+                {plantillas.length}
+              </span>
+            </div>
             <div className="card-body">
               {cargando ? (
-                <div className="text-center py-4"><span className="spinner-border spinner-border-sm me-2" />Consultando Meta...</div>
+                <div className="text-center py-4">
+                  <span className="spinner-border spinner-border-sm me-2" />
+                  Consultando Meta...
+                </div>
               ) : plantillas.length === 0 ? (
-                <p className="text-muted small mb-0">Meta todavía no devuelve plantillas para esta cuenta.</p>
+                <div className="text-center py-5">
+                  <div className="text-muted mb-2">
+                    <i className="bi bi-inbox fs-1 opacity-50" />
+                  </div>
+                  <p className="text-muted small mb-0">Meta todavía no devuelve plantillas para esta cuenta.</p>
+                  <p className="text-muted small mb-0">Crea tu primera plantilla en el formulario de la derecha.</p>
+                </div>
               ) : (
                 <div className="d-flex flex-column gap-2">
                   {plantillas.map((plantilla) => {
                     const body = plantilla.components.find((component) => component.type.toUpperCase() === 'BODY')?.text;
                     const header = plantilla.components.find((component) => component.type.toUpperCase() === 'HEADER');
+                    const estadoClase = plantilla.status === 'APPROVED'
+                      ? 'text-bg-success'
+                      : plantilla.status === 'REJECTED'
+                        ? 'text-bg-danger'
+                        : plantilla.status === 'PENDING' || plantilla.status === 'IN_REVIEW'
+                          ? 'text-bg-warning'
+                          : 'text-bg-secondary';
+                    const estadoIcono = plantilla.status === 'APPROVED'
+                      ? 'bi-check-circle-fill'
+                      : plantilla.status === 'REJECTED'
+                        ? 'bi-x-circle-fill'
+                        : plantilla.status === 'PENDING' || plantilla.status === 'IN_REVIEW'
+                          ? 'bi-hourglass-split'
+                          : 'bi-dash-circle';
                     return (
-                      <div key={`${plantilla.id}-${plantilla.language}`} className="border rounded p-3">
+                      <div key={`${plantilla.id}-${plantilla.language}`} className="border rounded p-3 h-100">
                         <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                          <strong>{plantilla.name}</strong>
-                          <span className={`badge ${plantilla.status === 'APPROVED' ? 'text-bg-success' : plantilla.status === 'REJECTED' ? 'text-bg-danger' : 'text-bg-secondary'}`}>
+                          <strong className="d-flex align-items-center gap-2">
+                            <i className={`bi bi-${header?.format?.toLowerCase() === 'video' ? 'play-circle' : header?.format ? 'image' : 'chat-left-text'} text-primary`} />
+                            {plantilla.name}
+                          </strong>
+                          <span className={`badge ${estadoClase} d-inline-flex align-items-center gap-1`}>
+                            <i className={`bi ${estadoIcono}`} />
                             {etiquetaEstado(plantilla.status)}
                           </span>
                         </div>
-                        <div className="small text-muted mt-1">
-                          {plantilla.category} · {plantilla.language}
-                          {header?.format ? ` · Encabezado ${header.format.toLowerCase()}` : ''}
+                        <div className="small text-muted mt-1 d-flex align-items-center gap-1 flex-wrap">
+                          <i className="bi bi-tag" />
+                          {plantilla.category}
+                          <span className="mx-1">·</span>
+                          <i className="bi bi-translate" />
+                          {plantilla.language}
+                          {header?.format ? (
+                            <>
+                              <span className="mx-1">·</span>
+                              <i className={`bi bi-${header.format.toLowerCase() === 'video' ? 'play-circle' : 'image'}`} />
+                              Encabezado {header.format.toLowerCase()}
+                            </>
+                          ) : null}
                         </div>
-                        {body && <div className="small mt-2">{body}</div>}
+                        {body && <div className="small mt-2 text-body-secondary bg-light rounded p-2">{body}</div>}
                         {plantilla.rejected_reason && (
-                          <div className="small text-danger mt-2">Motivo: {plantilla.rejected_reason}</div>
+                          <div className="small text-danger mt-2 d-flex align-items-start gap-1">
+                            <i className="bi bi-exclamation-circle mt-0.5" />
+                            <span>Motivo: {plantilla.rejected_reason}</span>
+                          </div>
                         )}
                       </div>
                     );
@@ -211,12 +280,18 @@ export default function PlantillasWhatsAppPage() {
         </div>
 
         <div className="col-12 col-xl-5">
-          <div className="card border-0 shadow-sm">
-            <div className="card-header bg-white fw-semibold">Crear y enviar a revisión</div>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+              <i className="bi bi-plus-square text-success" />
+              Crear y enviar a revisión
+            </div>
             <div className="card-body">
               <form onSubmit={enviarARevision}>
                 <div className="mb-3">
-                  <label className="form-label" htmlFor="template-name">Nombre (minúsculas y guion bajo)</label>
+                  <label className="form-label fw-medium" htmlFor="template-name">
+                    <i className="bi bi-fonts me-1 text-muted" />
+                    Nombre (minúsculas y guion bajo)
+                  </label>
                   <input
                     id="template-name"
                     className="form-control"
@@ -229,15 +304,21 @@ export default function PlantillasWhatsAppPage() {
                 </div>
 
                 <div className="row g-2 mb-3">
-                  <div className="col">
-                    <label className="form-label" htmlFor="template-category">Categoría</label>
+                  <div className="col-12 col-sm-6">
+                    <label className="form-label fw-medium" htmlFor="template-category">
+                      <i className="bi bi-funnel me-1 text-muted" />
+                      Categoría
+                    </label>
                     <select id="template-category" className="form-select" value={categoria} onChange={(e) => setCategoria(e.target.value as 'UTILITY' | 'MARKETING')}>
                       <option value="UTILITY">Utilidad</option>
                       <option value="MARKETING">Marketing</option>
                     </select>
                   </div>
-                  <div className="col">
-                    <label className="form-label" htmlFor="template-language">Idioma</label>
+                  <div className="col-12 col-sm-6">
+                    <label className="form-label fw-medium" htmlFor="template-language">
+                      <i className="bi bi-translate me-1 text-muted" />
+                      Idioma
+                    </label>
                     <select id="template-language" className="form-select" value={idioma} onChange={(e) => setIdioma(e.target.value)}>
                       <option value="es_PE">Español (Perú)</option>
                       <option value="es">Español</option>
@@ -247,7 +328,10 @@ export default function PlantillasWhatsAppPage() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label" htmlFor="template-header">Encabezado</label>
+                  <label className="form-label fw-medium" htmlFor="template-header">
+                    <i className="bi bi-aspect-ratio me-1 text-muted" />
+                    Encabezado
+                  </label>
                   <select
                     id="template-header"
                     className="form-select"
@@ -265,7 +349,8 @@ export default function PlantillasWhatsAppPage() {
 
                 {encabezado !== 'NONE' && (
                   <div className="mb-3">
-                    <label className="form-label" htmlFor="template-sample">
+                    <label className="form-label fw-medium" htmlFor="template-sample">
+                      <i className="bi bi-paperclip me-1 text-muted" />
                       Muestra para revisión ({encabezado === 'IMAGE' ? 'JPG/PNG, máx. 5 MB' : 'MP4, máx. 16 MB'})
                     </label>
                     <input
@@ -278,12 +363,20 @@ export default function PlantillasWhatsAppPage() {
                         e.currentTarget.value = '';
                       }}
                     />
-                    {muestra && <div className="form-text">{muestra.name}</div>}
+                    {muestra && (
+                      <div className="form-text d-flex align-items-center gap-1">
+                        <i className="bi bi-file-earmark-check text-success" />
+                        {muestra.name}
+                      </div>
+                    )}
                   </div>
                 )}
 
                 <div className="mb-3">
-                  <label className="form-label" htmlFor="template-body">Texto de la plantilla</label>
+                  <label className="form-label fw-medium" htmlFor="template-body">
+                    <i className="bi bi-chat-left-text me-1 text-muted" />
+                    Texto de la plantilla
+                  </label>
                   <textarea
                     id="template-body"
                     className="form-control"
@@ -293,12 +386,18 @@ export default function PlantillasWhatsAppPage() {
                     onChange={(e) => setCuerpo(e.target.value)}
                     required
                   />
-                  <div className="form-text">Usa variables posicionales como {'{{1}}'} y {'{{2}}'}.</div>
+                  <div className="form-text d-flex align-items-center gap-1">
+                    <i className="bi bi-info-circle" />
+                    Usa variables posicionales como {'{{1}}'} y {'{{2}}'}.
+                  </div>
                 </div>
 
                 {cantidadVariables > 0 && (
                   <div className="mb-3">
-                    <label className="form-label" htmlFor="template-examples">Ejemplos de variables (uno por línea)</label>
+                    <label className="form-label fw-medium" htmlFor="template-examples">
+                      <i className="bi bi-list-ol me-1 text-muted" />
+                      Ejemplos de variables (uno por línea)
+                    </label>
                     <textarea
                       id="template-examples"
                       className="form-control"
@@ -311,8 +410,12 @@ export default function PlantillasWhatsAppPage() {
                   </div>
                 )}
 
-                <button type="submit" className="btn btn-primary w-100" disabled={enviando || cargando}>
-                  {enviando && <span className="spinner-border spinner-border-sm me-2" />}
+                <button type="submit" className="btn btn-primary w-100 d-inline-flex align-items-center justify-content-center gap-2" disabled={enviando || cargando}>
+                  {enviando ? (
+                    <span className="spinner-border spinner-border-sm" />
+                  ) : (
+                    <i className="bi bi-send" />
+                  )}
                   Enviar a revisión de Meta
                 </button>
               </form>
