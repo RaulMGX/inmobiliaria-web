@@ -122,7 +122,9 @@ export default function PlantillasWhatsAppPage() {
       form.append('category', categoria);
       form.append('body', cuerpo.trim());
       form.append('headerFormat', encabezado);
-      form.append('bodyExamples', JSON.stringify(ejemplos));
+      if (cantidadVariables > 0) {
+        form.append('bodyExamples', JSON.stringify(ejemplos));
+      }
       if (muestra) form.append('headerSample', muestra);
       const { data } = await http.post(`/empresas/${empresaId}/whatsapp/plantillas`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
